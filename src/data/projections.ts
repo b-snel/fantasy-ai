@@ -24,6 +24,7 @@ import {
   type ScoringSettings,
 } from "../sleeper/types.ts";
 import type { Capabilities } from "./capabilities.ts";
+import { checkAdpSanity, extractAdp } from "./adp.ts";
 
 /** Projected season points and the ADP that came with them, keyed by player_id. */
 export interface ProjectionRow {
@@ -97,8 +98,11 @@ async function fetchWeeklyProjections(
   scoring: ScoringSettings,
   players: PlayersIndex,
 ): Promise<ProjectionTable> {
-  const totals = new Map<string, { points: number; adp: number | null }>();
+  const totals = new Map<string, { points: number; adp: number | null; weeks: number }>();
   const positionQuery = POSITIONS.map((p) => `position[]=${p}`).join("&");
+
+  let weeksWithData = 0;
+  const adpKeysSeen = new Set<string>();
 
   for (let week = 1; week <= REGULAR_SEASON_WEEKS; week++) {
     const url =
@@ -107,6 +111,7 @@ async function fetchWeeklyProjections(
 
     const rows = await getJson<SleeperProjectionEntry[]>(url, { retries: 1 });
     if (!rows?.length) continue;
+    weeksWithData++;
 
     for (const row of rows) {
       const playerId = row.player_id;
@@ -114,46 +119,77 @@ async function fetchWeeklyProjections(
       const position = players[playerId]?.position ?? null;
       const weekPoints = scoreStatLine(row.stats ?? {}, scoring, position);
       const prev = totals.get(playerId);
-      const adp = prev?.adp ?? extractAdp(row, scoring);
-      totals.set(playerId, { points: (prev?.points ?? 0) + weekPoints, adp });
+
+      let adp = prev?.adp ?? null;
+      if (adp == null) {
+        const found = extractAdp(row as Record<string, unknown>, scoring);
+        if (found) {
+          adp = found.value;
+          adpKeysSeen.add(found.key);
+        }
+      }
+
+      totals.set(playerId, {
+        points: (prev?.points ?? 0) + weekPoints,
+        adp,
+        // Only weeks that actually project points count as played; a bye or an
+        // absent row must not drag the per-game average down.
+        weeks: (prev?.weeks ?? 0) + (weekPoints > 0 ? 1 : 0),
+      });
     }
   }
 
+  if (weeksWithData === 0) return new Map();
+
+  /*
+   * Extrapolate when the season is only partly published.
+   *
+   * Summing whatever weeks happen to exist silently under-projects everyone when
+   * only a few are up, which is exactly the situation the morning of a draft. The
+   * ordering would survive, but VORP against replacement level would not, so scale
+   * a partial season up to a full one instead.
+   */
+  const EXPECTED_GAMES = 17;
+  const partial = weeksWithData < 14;
+  if (partial) {
+    console.warn(
+      `[projections] only ${weeksWithData} of ${REGULAR_SEASON_WEEKS} weeks are ` +
+        `published; extrapolating to a ${EXPECTED_GAMES}-game season`,
+    );
+  }
+
   const out: ProjectionTable = new Map();
-  for (const [playerId, { points, adp }] of totals) {
+  for (const [playerId, { points, adp, weeks }] of totals) {
+    const scaled =
+      partial && weeks > 0 ? (points / weeks) * EXPECTED_GAMES : points;
     out.set(playerId, {
       playerId,
-      points: Math.round(points * 10) / 10,
+      points: Math.round(scaled * 10) / 10,
       adp,
       source: "sleeper_weekly",
     });
   }
-  return out;
-}
 
-/**
- * Sleeper exposes several ADP variants (`adp_ppr`, `adp_half_ppr`, `adp_std`,
- * `adp_dynasty_*`). Pick the one matching the league's scoring so a standard league
- * is not ranked off PPR ADP.
- */
-function extractAdp(row: SleeperProjectionEntry, scoring: ScoringSettings): number | null {
-  const ppr = scoring.rec ?? 0;
-  const preference =
-    ppr >= 1
-      ? ["adp_ppr", "adp_half_ppr", "adp_std", "adp"]
-      : ppr > 0
-        ? ["adp_half_ppr", "adp_ppr", "adp_std", "adp"]
-        : ["adp_std", "adp_half_ppr", "adp_ppr", "adp"];
-
-  // ADP may sit at the top level or inside stats, depending on the endpoint.
-  const stats = (row.stats ?? {}) as Record<string, unknown>;
-  for (const key of preference) {
-    for (const source of [row as Record<string, unknown>, stats]) {
-      const value = source[key];
-      if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
-    }
+  // ADP is load-bearing and fails silently, so say plainly what was found.
+  const adpValues = [...out.values()].map((r) => r.adp).filter((v): v is number => v != null);
+  const sanity = checkAdpSanity(adpValues);
+  if (adpKeysSeen.size === 0) {
+    console.warn(
+      "[projections] no ADP field found - survival and VONA will fall back to " +
+        "search_rank ordering, which is coarser",
+    );
+  } else if (!sanity.ok) {
+    console.warn(
+      `[projections] ADP from ${[...adpKeysSeen].join(", ")} looks wrong: ${sanity.warning}`,
+    );
+  } else {
+    console.log(
+      `[projections] ADP from ${[...adpKeysSeen].join(", ")} ` +
+        `(${sanity.count} players, ${sanity.min.toFixed(1)}-${sanity.max.toFixed(1)})`,
+    );
   }
-  return null;
+
+  return out;
 }
 
 /**

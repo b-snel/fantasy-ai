@@ -1,0 +1,52 @@
+{
+  "_comment": "THE MAIN LEAGUE, transcribed from a live `bun run doctor` run on 2026-09-01. Two things here differ from the generic fixture in ways the engine has to handle: there is no kicker slot at all, and passing touchdowns are worth 6 rather than the usual 4.",
+  "league_id": "1348178795533701120",
+  "name": "THE MAIN LEAGUE",
+  "season": "2026",
+  "season_type": "regular",
+  "status": "pre_draft",
+  "sport": "nfl",
+  "total_rosters": 12,
+  "draft_id": "1348178795533701121",
+  "previous_league_id": null,
+  "avatar": null,
+  "roster_positions": [
+    "QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "FLEX", "DEF",
+    "BN", "BN", "BN", "BN", "BN", "BN"
+  ],
+  "scoring_settings": {
+    "pass_yd": 0.04,
+    "pass_td": 6,
+    "pass_int": -2,
+    "pass_2pt": 2,
+    "rush_yd": 0.1,
+    "rush_td": 6,
+    "rush_2pt": 2,
+    "rec": 0.5,
+    "rec_yd": 0.1,
+    "rec_td": 6,
+    "rec_2pt": 2,
+    "fum_lost": -2,
+    "sack": 1,
+    "int": 2,
+    "def_td": 6,
+    "safe": 2,
+    "blk_kick": 2,
+    "fum_rec": 2,
+    "pts_allow_0": 10,
+    "pts_allow_1_6": 7,
+    "pts_allow_7_13": 4,
+    "pts_allow_14_20": 1,
+    "pts_allow_21_27": 0,
+    "pts_allow_28_34": -1,
+    "pts_allow_35p": -4
+  },
+  "settings": {
+    "num_teams": 12,
+    "draft_rounds": 15,
+    "playoff_week_start": 15,
+    "playoff_teams": 6,
+    "max_keepers": 0,
+    "type": 0
+  }
+}

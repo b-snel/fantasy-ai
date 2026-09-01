@@ -24,6 +24,7 @@ import {
 import { describeScoring } from "../engine/scoring.ts";
 import { parseRosterPositions } from "../engine/replacement.ts";
 import { saveCapabilities, type Capabilities } from "../data/capabilities.ts";
+import { checkAdpSanity, extractAdp } from "../data/adp.ts";
 import { myRosterIdFromDraft } from "../engine/snake.ts";
 
 const GREEN = "\x1b[32m";
@@ -188,9 +189,55 @@ async function main(): Promise<void> {
     const statKeys = Object.keys((sample.stats as object) ?? {}).slice(0, 8);
     console.log(`      ${DIM}sample keys: ${Object.keys(sample).slice(0, 8).join(", ")}${RESET}`);
     console.log(`      ${DIM}stat keys:   ${statKeys.join(", ")}${RESET}`);
-    const adpKeys = Object.keys(sample).filter((k) => k.toLowerCase().includes("adp"));
-    console.log(`      ${DIM}adp keys:    ${adpKeys.length ? adpKeys.join(", ") : "none at top level"}${RESET}`);
-    if (!adpKeys.length) notes.push("no ADP field found in the projections payload — survival estimates will use search_rank ordering");
+    /*
+     * ADP deserves a real report rather than a one-line yes/no.
+     *
+     * It is the input behind survival probability and VONA, and when it is absent
+     * nothing breaks loudly - every survival estimate just flattens to 0.5 and the
+     * board keeps rendering. An earlier version of this check only looked at the
+     * top level, reported "none found", and was wrong: the fields live in `stats`.
+     */
+    const stats = (sample.stats as Record<string, unknown>) ?? {};
+    const allAdp = [
+      ...Object.entries(sample),
+      ...Object.entries(stats),
+    ].filter(([k]) => k.toLowerCase().includes("adp"));
+
+    if (allAdp.length) {
+      console.log(
+        `      ${DIM}adp keys:    ${allAdp
+          .map(([k, v]) => `${k}=${typeof v === "number" ? v : String(v)}`)
+          .join(", ")}${RESET}`,
+      );
+    } else {
+      console.log(`      ${DIM}adp keys:    none${RESET}`);
+    }
+
+    const chosen = extractAdp(sample, league.scoring_settings);
+    if (chosen) {
+      // Sample the whole page so the sanity check has a real distribution.
+      const values = (bulk as Array<Record<string, unknown>>)
+        .map((r) => extractAdp(r, league.scoring_settings)?.value)
+        .filter((v): v is number => v != null);
+      const sanity = checkAdpSanity(values, league.total_rosters);
+
+      record(
+        "ADP field selected",
+        sanity.ok ? "ok" : "warn",
+        sanity.ok
+          ? `${chosen.key} · ${sanity.count} players · range ${sanity.min.toFixed(1)}-${sanity.max.toFixed(1)}`
+          : `${chosen.key} · ${sanity.warning}`,
+      );
+      if (!sanity.ok) {
+        notes.push(`ADP from ${chosen.key} failed its sanity check: ${sanity.warning}`);
+      }
+    } else {
+      record("ADP field selected", "warn", "none usable — falling back to search_rank ordering");
+      notes.push(
+        "no usable overall ADP in the projections payload — survival and VONA will " +
+          "fall back to search_rank ordering, which is coarser",
+      );
+    }
   }
 
   const seasonProj = await probeJson(
