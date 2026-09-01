@@ -12,6 +12,7 @@ import { config } from "../config.ts";
 import { isFantasyPosition, type FantasyPosition } from "../sleeper/types.ts";
 import { assignTiers, tierCounts, type TierAssignment } from "./tiers.ts";
 import type { RosterState } from "./roster.ts";
+import type { RosterRequirements } from "./replacement.ts";
 
 export interface RankablePlayer {
   playerId: string;
@@ -53,6 +54,8 @@ export interface ScoredPlayer extends RankablePlayer {
   components: ScoreComponents;
   /** Why this player is on the shortlist. */
   reason: ShortlistReason;
+  /** 0-1 multiplier applied to value terms because the position is already covered. */
+  saturation: number;
 }
 
 export interface ScoreComponents {
@@ -77,6 +80,104 @@ export interface BoardContext {
   roster: RosterState;
   replacementPoints: Record<string, number>;
   picksRemaining: number;
+  /** Needed to know when a position is already full. Optional for unit tests. */
+  requirements?: RosterRequirements;
+}
+
+/** Which positions each flex kind can absorb. Mirrors replacement.ts. */
+const FLEX_ELIGIBILITY: Record<string, string[]> = {
+  FLEX: ["RB", "WR", "TE"],
+  WRRB_FLEX: ["RB", "WR"],
+  REC_FLEX: ["WR", "TE"],
+  SUPER_FLEX: ["QB", "RB", "WR", "TE"],
+};
+
+/** Positions that are streamable off waivers all season. */
+const STREAMABLE = new Set(["K", "DEF"]);
+
+/**
+ * Points-equivalent value of fully satisfying a positional need. Roughly what a
+ * startable player produces, because that is what an empty slot costs you.
+ */
+const NEED_POINT_SCALE = 120;
+
+/**
+ * Convert raw VORP into a value term that behaves sensibly below replacement.
+ *
+ * VORP goes negative for everyone outside the starting pool, which is arithmetically
+ * true and strategically useless: a bench receiver is not worth *minus* thirty
+ * points, he is worth a small positive amount as a lottery ticket and bye-week
+ * cover. Scoring him negative makes a second kicker - tiny but positive VORP - look
+ * like the better pick in round twelve, which it never is.
+ *
+ * Softplus keeps the identity for real starters (a +100 VORP player still scores
+ * ~100) while compressing everything below replacement into a small positive band
+ * that preserves ordering.
+ */
+export function valueTerm(vorp: number, scale = 25): number {
+  const z = vorp / scale;
+  // log1p(exp(z)) computed stably for large z.
+  const softplus = z > 30 ? z : Math.log1p(Math.exp(z));
+  return scale * softplus;
+}
+
+/**
+ * How much of a player's raw value actually accrues to *this* roster right now.
+ *
+ * VORP measures a player against the league's replacement level, which is the right
+ * question when you need one and the wrong question once you have one. Two distinct
+ * corrections live here, and the engine drafts badly without either.
+ *
+ * **Saturation.** The eleventh-round quarterback in a one-quarterback league has a
+ * genuinely high VORP and almost no marginal value to a team that already started a
+ * quarterback in round three. Left uncorrected the blend keeps taking backups,
+ * because in isolation each of them really is the best player left.
+ *
+ * **Streaming.** Kickers and defenses are the sharper version of the same problem.
+ * Their VORP is real - the twelfth kicker does score fewer points than the fourth -
+ * but it is not worth a draft pick, because the spread is small, next to
+ * unpredictable year over year, and the position is replaceable off waivers every
+ * single week. Ranking them on VORP alone hands you a kicker in round ten while
+ * startable flex players are still on the board. Every competent drafter waits, and
+ * so should this.
+ */
+export function marginalValueMultiplier(
+  position: string,
+  roster: RosterState,
+  requirements: RosterRequirements | undefined,
+  picksRemaining: number,
+): number {
+  if (!requirements) return 1;
+  if (!isFantasyPosition(position)) return 1;
+
+  const owned = roster.countsByPosition[position as FantasyPosition] ?? 0;
+  const required = requirements.starters[position] ?? 0;
+
+  let flexCapacity = 0;
+  for (const [kind, count] of Object.entries(requirements.flex)) {
+    if ((FLEX_ELIGIBILITY[kind] ?? []).includes(position)) flexCapacity += count;
+  }
+
+  if (STREAMABLE.has(position)) {
+    // Already covered: a second kicker is never the pick.
+    if (owned >= required) return 0.02;
+    // The endgame is exactly when you take the one you need.
+    if (picksRemaining <= 2) return 1;
+    // Suppressed, but not to zero - the relative order among kickers is preserved,
+    // so when the endgame arrives the best one is still on top.
+    return 0.05;
+  }
+
+  // Still filling a dedicated starting slot: full value.
+  if (owned < required) return 1;
+  // Could still win a flex slot: nearly full value.
+  if (owned < required + flexCapacity) return 0.9;
+  // First true backup: real insurance value, especially across bye weeks.
+  if (owned < required + flexCapacity + 1) return 0.45;
+  // Second backup at a position already covered twice over.
+  if (owned < required + flexCapacity + 2) return 0.2;
+  // Roster clog.
+  return 0.08;
 }
 
 /**
@@ -167,11 +268,31 @@ export function scoreBoard(available: RankablePlayer[], ctx: BoardContext): Scor
       ? ctx.roster.needs[player.position as FantasyPosition]?.urgency ?? 0
       : 0;
 
+    // Scales the value terms only. Injury, bye and stack adjustments are absolute
+    // and should not shrink just because a position is covered.
+    const saturation = marginalValueMultiplier(
+      player.position,
+      ctx.roster,
+      ctx.requirements,
+      ctx.picksRemaining,
+    );
+
     const components: ScoreComponents = {
-      vorp: vorp * w.vorp,
-      vona: vona * w.vona,
-      // Scaled to points so the blend stays interpretable: full urgency ~ 25 pts.
-      need: need * 25 * w.need,
+      vorp: valueTerm(vorp) * w.vorp * saturation,
+      vona: vona * w.vona * saturation,
+      // Scaled to points so the blend stays interpretable. The scale is large on
+      // purpose: an unfilled starting slot is not a preference, it is a hole that
+      // scores zero every single week, and the cost of leaving one open is closer
+      // to a startable player's entire output than to a rounding adjustment. At 25
+      // points the term was decorative and the engine would happily finish a draft
+      // without a receiver.
+      //
+      // Multiplied by the same marginal factor as the value terms, which is what
+      // stops an empty kicker slot from screaming in round nine. An unfilled slot
+      // at a streamable position is not urgent until the endgame - that is the
+      // entire reason it is streamable. For every other position the factor is 1
+      // while the slot is open, so this changes nothing there.
+      need: need * NEED_POINT_SCALE * w.need * saturation,
       // Being the last player in a tier above a real cliff is worth acting on.
       tierBreak: tierRemaining <= 2 ? tierInfo.cliffBelow * w.tierBreak : 0,
       injury: -injuryPenalty(player) * w.injury,
@@ -194,6 +315,7 @@ export function scoreBoard(available: RankablePlayer[], ctx: BoardContext): Scor
       score,
       components: roundComponents(components),
       reason: "value",
+      saturation: round2(saturation),
     };
   });
 

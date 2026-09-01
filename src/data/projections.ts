@@ -171,18 +171,36 @@ export function projectionsFromSearchRank(
 ): ProjectionTable {
   const ppr = scoring.rec ?? 0;
 
-  // Rough top-of-position season point totals, adjusted for reception scoring.
+  // Calibrated against real PPR season totals rather than invented: these produce
+  // roughly QB12 ~ 300, RB30 ~ 155, WR30 ~ 165, TE12 ~ 120, K12 ~ 131, DEF12 ~ 111,
+  // which is close enough to a real season for replacement level and tiering to land
+  // in the right place.
+  //
+  // The narrow K and DEF spreads are the important detail, not a rounding choice.
+  // Those positions really do compress into ~30 points top to bottom, and that
+  // compression is the whole reason they are streamable - an engine that gives them
+  // a wide spread will draft a kicker in round ten and be arithmetically correct
+  // about it.
   const peak: Record<string, number> = {
-    QB: 380,
-    RB: 300 + ppr * 55,
-    WR: 260 + ppr * 95,
-    TE: 190 + ppr * 75,
-    K: 145,
-    DEF: 140,
+    QB: 400,
+    RB: 300 + ppr * 30,
+    WR: 250 + ppr * 90,
+    TE: 180 + ppr * 70,
+    K: 155,
+    DEF: 150,
   };
-  const floor: Record<string, number> = { QB: 150, RB: 40, WR: 40, TE: 30, K: 95, DEF: 70 };
+  const floor: Record<string, number> = { QB: 250, RB: 95, WR: 85, TE: 58, K: 120, DEF: 92 };
   /** How quickly value decays with positional rank. */
-  const decay: Record<string, number> = { QB: 22, RB: 16, WR: 20, TE: 9, K: 20, DEF: 20 };
+  const decay: Record<string, number> = { QB: 11, RB: 22, WR: 26, TE: 10, K: 12, DEF: 12 };
+  /**
+   * A pure exponential asymptotes to its floor, which leaves ranks 20-32 sitting on
+   * a plateau at nearly identical value. That plateau is not harmless: it makes the
+   * 24th quarterback look like a viable pick, because he scores about what the 20th
+   * does. Real distributions keep declining into genuinely unrosterable players, so
+   * a linear tail runs underneath the exponential to break the plateau.
+   */
+  const tail: Record<string, number> = { QB: 2.6, RB: 1.1, WR: 0.9, TE: 1.1, K: 0.6, DEF: 0.6 };
+  const hardFloor: Record<string, number> = { QB: 55, RB: 20, WR: 20, TE: 15, K: 90, DEF: 55 };
 
   const byPosition = new Map<string, Array<{ playerId: string; rank: number }>>();
   for (const [playerId, p] of Object.entries(players)) {
@@ -203,10 +221,17 @@ export function projectionsFromSearchRank(
     const lo = floor[position] ?? 40;
     const k = decay[position] ?? 16;
 
+    const slope = tail[position] ?? 1;
+    const min = hardFloor[position] ?? 15;
+
     list.forEach((entry, index) => {
       const positionalRank = index + 1;
-      // Exponential decay from peak toward the positional floor.
-      const points = lo + (hi - lo) * Math.exp(-(positionalRank - 1) / k);
+      // Exponential decay from peak toward the positional floor, with a linear tail
+      // underneath so the deep end keeps declining instead of plateauing.
+      const points = Math.max(
+        min,
+        lo + (hi - lo) * Math.exp(-(positionalRank - 1) / k) - slope * (positionalRank - 1),
+      );
       out.set(entry.playerId, {
         playerId: entry.playerId,
         points: Math.round(points * 10) / 10,

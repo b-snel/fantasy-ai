@@ -87,17 +87,18 @@ export function evaluateRoster(
     totalStarterSlots += required;
     filledStarterSlots += Math.min(owned_, required);
 
-    // Urgency rises as unfilled starters approach the number of picks left.
-    // With plenty of picks in hand, an empty slot is not yet a problem.
+    // Urgency rises as unfilled starters approach the number of picks left. With
+    // plenty of picks in hand an empty slot is not yet a problem; with few, it is
+    // the only thing that matters. The square root makes the curve bite earlier
+    // than a linear ramp, which under-reacted until it was genuinely too late -
+    // by the time a linear ramp screams, the startable players are gone.
     const scarcityPressure = picksRemaining > 0 ? unfilled / picksRemaining : unfilled > 0 ? 1 : 0;
-    let urgency = Math.min(1, scarcityPressure * 2);
+    let urgency = unfilled === 0 ? 0 : Math.min(1, Math.sqrt(scarcityPressure * 1.6));
 
     // A position with flex outlets keeps mild value even when its slots are full.
     if (unfilled === 0 && flexCapacity[pos] > 0 && owned_ < required + flexCapacity[pos]) {
       urgency = Math.max(urgency, 0.2);
     }
-    // Never zero out a position entirely while you still have bench picks to spend.
-    if (unfilled === 0 && urgency === 0 && picksRemaining > 0) urgency = 0.05;
 
     needs[pos] = { position: pos, required, owned: owned_, unfilled, urgency: round3(urgency) };
   }

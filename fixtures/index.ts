@@ -20,12 +20,19 @@ const NFL_TEAMS = [
   "NO", "NYG", "NYJ", "PHI", "PIT", "SEA", "SF", "TB", "TEN", "WAS",
 ];
 
-/** Player counts per position, roughly matching a real draftable pool. */
+/**
+ * Player counts per position.
+ *
+ * Sized against the real draftable pool rather than the number of players anyone
+ * would actually draft. A shallow fixture is misleading in a specific way: 180 picks
+ * drain it far enough that the last rounds contain nothing but unrosterable players,
+ * and the engine's behaviour there tells you about the fixture, not the engine.
+ */
 const POOL_SHAPE: Array<[string, number]> = [
-  ["QB", 32],
-  ["RB", 70],
-  ["WR", 90],
-  ["TE", 34],
+  ["QB", 40],
+  ["RB", 120],
+  ["WR", 170],
+  ["TE", 55],
   ["K", 32],
   ["DEF", 32],
 ];

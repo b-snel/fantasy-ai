@@ -32,9 +32,22 @@ describe("evaluateRoster", () => {
 
   test("urgency rises as picks run out", () => {
     const early = evaluateRoster([], REQ, 15);
+    const mid = evaluateRoster([], REQ, 6);
     const late = evaluateRoster([], REQ, 2);
-    expect(late.needs.QB.urgency).toBeGreaterThan(early.needs.QB.urgency);
-    expect(late.needs.QB.urgency).toBe(1);
+    expect(mid.needs.QB.urgency).toBeGreaterThan(early.needs.QB.urgency);
+    expect(late.needs.QB.urgency).toBeGreaterThan(mid.needs.QB.urgency);
+  });
+
+  test("urgency saturates once you have no runway left", () => {
+    // One unfilled slot and one pick remaining is as urgent as it gets.
+    expect(evaluateRoster([], REQ, 1).needs.QB.urgency).toBe(1);
+  });
+
+  test("the ramp bites well before the last pick", () => {
+    // A linear ramp under-reacted until the startable players were already gone.
+    // With two receiver slots open and six picks left this should already be loud.
+    const state = evaluateRoster([], REQ, 6);
+    expect(state.needs.WR.urgency).toBeGreaterThan(0.6);
   });
 
   test("a filled position with a flex outlet keeps residual value", () => {

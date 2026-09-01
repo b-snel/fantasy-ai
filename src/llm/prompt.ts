@@ -220,6 +220,8 @@ export interface VolatileInput {
   candidates: ScoredPlayer[];
   recentPicks: Array<{ pickNo: number; name: string; position: string; team: string | null }>;
   projectionSource: string;
+  /** Set when the top candidates are separated by less than noise. */
+  effectivelyTied?: boolean;
 }
 
 /**
@@ -316,6 +318,14 @@ export function buildVolatileTail(v: VolatileInput): string {
   }
 
   lines.push(``);
+  if (v.effectivelyTied) {
+    lines.push(
+      `NOTE: the top candidates are separated by less than the noise in the ` +
+        `projections. Say so plainly and pick on upside or roster fit rather than ` +
+        `implying a meaningful edge. Confidence should be "low".`,
+    );
+    lines.push(``);
+  }
   lines.push(`Give your recommendation.`);
   return lines.join("\n");
 }
