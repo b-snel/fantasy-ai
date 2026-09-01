@@ -16,12 +16,12 @@ import {
   getRosters,
   getTradedPicks,
   getTrending,
-  readCache,
   resolveDraft,
 } from "../sleeper/client.ts";
 import { loadCapabilities } from "../data/capabilities.ts";
 import { getProjections, type ProjectionTable } from "../data/projections.ts";
 import { getByeWeeks, type ByeWeeks } from "../data/schedule.ts";
+import { loadNews } from "../data/news.ts";
 import { playerImages } from "../data/photos.ts";
 import { computeBoard, type BoardState } from "../engine/board.ts";
 import { recommend, shouldCallModel, totalSpendUsd, type CallUsage } from "../llm/recommend.ts";
@@ -175,8 +175,7 @@ export class DraftSession {
     const teams = [...new Set(Object.values(this.players).map((p) => p.team).filter(Boolean))] as string[];
     this.byeWeeks = await getByeWeeks({ season: league.season, teams, capabilities });
 
-    const cachedNews = await readCache<Record<string, string>>(config.paths.news);
-    if (cachedNews) this.news = new Map(Object.entries(cachedNews));
+    this.news = await loadNews();
 
     await this.pollTrending();
   }
