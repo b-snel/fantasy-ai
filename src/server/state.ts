@@ -25,6 +25,9 @@ import { loadNews } from "../data/news.ts";
 import { playerImages } from "../data/photos.ts";
 import { computeBoard, type BoardState } from "../engine/board.ts";
 import { recommend, shouldCallModel, totalSpendUsd, type CallUsage } from "../llm/recommend.ts";
+import { ask, type AskResult } from "../llm/ask.ts";
+import { describeScoring } from "../engine/scoring.ts";
+import type { ToolContext } from "../tools/index.ts";
 import type { Recommendation } from "../llm/schema.ts";
 import type {
   Draft,
@@ -152,6 +155,43 @@ export class DraftSession {
     await this.maybeRecommend(true);
   }
 
+  /**
+   * Answer a free-form question with the tool loop.
+   *
+   * The context is rebuilt per tool call rather than captured once, so a pick that
+   * lands mid-question is reflected in the answer instead of silently stale.
+   */
+  async ask(question: string): Promise<AskResult> {
+    if (!this.league || !this.draft) throw new Error("Draft data is still loading.");
+    return ask(question, () => this.toolContext());
+  }
+
+  private toolContext(): ToolContext {
+    const league = this.league!;
+    return {
+      board: this.currentBoard(),
+      leagueName: league.name,
+      scoringSummary: describeScoring(league.scoring_settings),
+    };
+  }
+
+  /** The board as of right now. */
+  private currentBoard(): BoardState {
+    return computeBoard({
+      league: this.league!,
+      draft: this.draft!,
+      picks: this.picks,
+      tradedPicks: this.tradedPicks,
+      rosters: this.rosters,
+      players: this.players,
+      projections: this.projections,
+      byeWeeks: this.byeWeeks,
+      trending: this.trending,
+      news: this.news,
+      userId: config.userId,
+    });
+  }
+
   private async loadStaticData(): Promise<void> {
     const capabilities = await loadCapabilities();
 
@@ -204,22 +244,7 @@ export class DraftSession {
 
   private recompute(): void {
     if (!this.league || !this.draft) return;
-
-    const board = computeBoard({
-      league: this.league,
-      draft: this.draft,
-      picks: this.picks,
-      tradedPicks: this.tradedPicks,
-      rosters: this.rosters,
-      players: this.players,
-      projections: this.projections,
-      byeWeeks: this.byeWeeks,
-      trending: this.trending,
-      news: this.news,
-      userId: config.userId,
-    });
-
-    this.state = this.render(board);
+    this.state = this.render(this.currentBoard());
     this.emit();
   }
 
@@ -227,20 +252,7 @@ export class DraftSession {
     if (!this.league || !this.draft || this.inFlight) return;
     if (this.draft.status === "complete") return;
 
-    const board = computeBoard({
-      league: this.league,
-      draft: this.draft,
-      picks: this.picks,
-      tradedPicks: this.tradedPicks,
-      rosters: this.rosters,
-      players: this.players,
-      projections: this.projections,
-      byeWeeks: this.byeWeeks,
-      trending: this.trending,
-      news: this.news,
-      userId: config.userId,
-    });
-
+    const board = this.currentBoard();
     const topIds = board.shortlist.map((p) => p.playerId);
     const decision = shouldCallModel({
       picksUntilMyTurn: board.turn.picksUntilMyTurn,

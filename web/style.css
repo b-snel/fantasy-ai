@@ -254,3 +254,27 @@ main {
 .shortlist th:first-child, .shortlist td:first-child { text-align: left; }
 .shortlist td { padding: 3px 4px; text-align: right; }
 .shortlist tr:hover td { background: var(--panel-2); }
+
+/* ---------- ask ---------- */
+
+.askform { display: flex; gap: 6px; }
+
+.askform input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13.5px;
+}
+.askform input:focus { outline: none; border-color: var(--accent); }
+
+.askout { margin-top: 9px; font-size: 13.5px; line-height: 1.55; }
+.askout:empty { display: none; }
+.askout .q { color: var(--muted); margin: 0 0 4px; }
+.askout .a { margin: 0; white-space: pre-wrap; }
+.askout .meta { margin: 6px 0 0; color: var(--muted); font-size: 11.5px; }
+.askout .err { color: var(--bad); margin: 0; }

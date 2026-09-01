@@ -194,6 +194,19 @@ export function createServer(session: DraftSession, registry = new SubscriberReg
     return c.json({ ok: true });
   });
 
+  app.post("/api/ask", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { question?: unknown };
+    const question = typeof body.question === "string" ? body.question : "";
+    if (!question.trim()) return c.json({ error: "Ask a question." }, 400);
+
+    try {
+      const result = await session.ask(question);
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
   return app;
 }
 

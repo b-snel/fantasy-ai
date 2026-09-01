@@ -70,6 +70,52 @@ el("refresh").addEventListener("click", async () => {
   }
 });
 
+/*
+ * Free-form questions.
+ *
+ * Runs the agentic tool loop server-side, so it is slower and pricier than a card
+ * refresh. Worth it for a real question, wasteful on a reflex - hence a deliberate
+ * submit rather than anything that fires on its own.
+ */
+el("askform").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = el("askinput");
+  const question = input.value.trim();
+  if (!question) return;
+
+  const out = el("askout");
+  out.innerHTML = `<p class="q">${escapeHtml(question)}</p><p class="a muted">Thinking…</p>`;
+  input.disabled = true;
+
+  try {
+    const res = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      out.innerHTML = `<p class="q">${escapeHtml(question)}</p>` +
+        `<p class="err">${escapeHtml(data.error ?? "Ask failed.")}</p>`;
+      return;
+    }
+
+    const tools = data.toolCalls?.length ? ` · ${data.toolCalls.join(", ")}` : "";
+    out.innerHTML =
+      `<p class="q">${escapeHtml(question)}</p>` +
+      `<p class="a">${escapeHtml(data.answer)}</p>` +
+      `<p class="meta">$${(data.usage?.estimatedCostUsd ?? 0).toFixed(4)} · ` +
+      `${data.usage?.latencyMs ?? 0}ms${escapeHtml(tools)}</p>`;
+    input.value = "";
+  } catch (err) {
+    out.innerHTML = `<p class="err">${escapeHtml(String(err))}</p>`;
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------

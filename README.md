@@ -47,6 +47,7 @@ doctor is what turns those assumptions into facts on the machine that matters.
 |---|---|
 | `bun run doctor` | Probe every endpoint and CDN path; write `data/capabilities.json` |
 | `bun run sync` | Cache players, league, projections, ADP, bye weeks |
+| `bun run news` | One-time pre-draft news sweep over the top ~150 players |
 | `bun start` | The live draft server at `localhost:5173` |
 | `bun run demo` | The real UI against fixture data — no Sleeper, no API key |
 | `bun run mock` | Simulate a full 15-round draft in the terminal |
@@ -56,6 +57,20 @@ doctor is what turns those assumptions into facts on the machine that matters.
 
 `bun run demo --advance` steps a pick every few seconds if you want to watch the UI
 update. `bun run mock --verbose` prints a deeper board at each of your picks.
+`bun run news --limit=200` widens the sweep.
+
+### The Ask box
+
+The side panel takes free-form questions — "best available or fill my flex?", "who's
+left at tight end?", "compare these two". That path runs an agentic tool loop over
+the same engine functions the pipeline calls, so the numbers it quotes are the
+numbers on the cards rather than a second, driftable code path.
+
+The split is deliberate. Recommendations know exactly what data they need, so they
+compute a shortlist and make one structured call. A free-form question has no fixed
+data requirement — the model has to decide what to look at — and that is the case a
+tool loop is actually for. It is slower and pricier per answer, which is why it sits
+behind a button rather than firing on its own.
 
 ---
 
