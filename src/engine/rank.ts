@@ -207,7 +207,7 @@ export function scoreBoard(available: RankablePlayer[], ctx: BoardContext): Scor
  * score does not rank them top — a shortlist that only contains the safe consensus
  * pick gives the model nothing to weigh.
  */
-export function buildShortlist(board: ScoredPlayer[], size = config.engine.shortlistSize): ScoredPlayer[] {
+export function buildShortlist(board: ScoredPlayer[], size: number = config.engine.shortlistSize): ScoredPlayer[] {
   if (board.length === 0) return [];
 
   const chosen = new Map<string, ScoredPlayer>();
