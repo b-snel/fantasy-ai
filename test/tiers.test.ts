@@ -94,3 +94,45 @@ describe("tierCounts", () => {
     expect(tierCounts(players.slice(1), tiers).get("RB:1")).toBe(1);
   });
 });
+
+describe("tier size cap", () => {
+  test("splits a long flat run into comprehensible tiers", () => {
+    // A pure gap rule lumps 30 near-identical players into one tier, and
+    // "30 left in tier 1" is not information anyone can act on.
+    const flat: TieredPlayer[] = Array.from({ length: 30 }, (_, i) => ({
+      playerId: `p${i}`,
+      position: "WR",
+      points: 200 - i, // 1-point gaps, far below the 12-point threshold
+    }));
+    const tiers = assignTiers(flat, GAPS, 12);
+    const sizes = new Map<number, number>();
+    for (const t of tiers.values()) sizes.set(t.tier, (sizes.get(t.tier) ?? 0) + 1);
+
+    expect(sizes.size).toBeGreaterThan(1);
+    for (const size of sizes.values()) expect(size).toBeLessThanOrEqual(8);
+  });
+
+  test("a real gap still takes precedence over the size cap", () => {
+    const players: TieredPlayer[] = [
+      { playerId: "a", position: "WR", points: 300 },
+      { playerId: "b", position: "WR", points: 250 }, // 50-point cliff
+      { playerId: "c", position: "WR", points: 249 },
+    ];
+    const tiers = assignTiers(players, GAPS, 12);
+    expect(tiers.get("a")!.tier).toBe(1);
+    expect(tiers.get("b")!.tier).toBe(2);
+    expect(tiers.get("c")!.tier).toBe(2);
+  });
+
+  test("the cap is configurable", () => {
+    const flat: TieredPlayer[] = Array.from({ length: 6 }, (_, i) => ({
+      playerId: `p${i}`,
+      position: "WR",
+      points: 200 - i,
+    }));
+    const tiers = assignTiers(flat, GAPS, 12, 2);
+    expect(tiers.get("p0")!.tier).toBe(1);
+    expect(tiers.get("p2")!.tier).toBe(2);
+    expect(tiers.get("p4")!.tier).toBe(3);
+  });
+});

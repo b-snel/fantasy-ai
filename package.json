@@ -11,7 +11,8 @@
     "sync": "bun run src/cli/sync.ts",
     "mock": "bun run src/cli/mock.ts",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit",
+    "demo": "bun run src/cli/demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

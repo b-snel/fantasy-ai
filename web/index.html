@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Draft Assistant</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1216'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%234ba3ff'%3E%E2%97%89%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="bar-left">
+        <span id="pick" class="pick">—</span>
+        <span id="round" class="muted">round —</span>
+      </div>
+      <div class="bar-mid">
+        <span id="turn" class="turn">connecting…</span>
+        <span id="clock" class="clock"></span>
+      </div>
+      <div class="bar-right">
+        <span id="spend" class="muted"></span>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <div id="alerts" class="alerts"></div>
+
+    <main>
+      <section class="cards-col">
+        <p id="boardread" class="boardread"></p>
+        <div id="cards" class="cards">
+          <p class="empty">Waiting for the draft…</p>
+        </div>
+      </section>
+
+      <aside class="side">
+        <section class="panel">
+          <h2>Your roster</h2>
+          <ul id="roster" class="roster"></ul>
+          <p id="needs" class="needs"></p>
+        </section>
+
+        <section class="panel">
+          <h2>Board</h2>
+          <ol id="recent" class="recent"></ol>
+        </section>
+
+        <section class="panel">
+          <h2>Full shortlist</h2>
+          <table id="shortlist" class="shortlist">
+            <thead>
+              <tr>
+                <th>Player</th><th>Pos</th><th title="Value over replacement">VORP</th>
+                <th title="Value over next available at this position">VONA</th>
+                <th title="Chance he lasts to your next pick">Surv</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+
+        <section class="panel">
+          <h2>Status</h2>
+          <p id="status" class="muted small"></p>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

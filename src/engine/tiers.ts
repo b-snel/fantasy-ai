@@ -27,10 +27,21 @@ export interface TieredPlayer {
  * Simple beats clever here — k-means style clustering produces prettier boundaries
  * and no better decisions, and this stays trivially explainable to the model.
  */
+/**
+ * Largest a tier may get before it is split.
+ *
+ * A pure gap rule produces one-player tiers where the curve is steep and enormous
+ * ones where it is flat - "159 left in WR tier 1" is technically true and tells you
+ * nothing. A tier is only useful as a decision aid if its size is comprehensible,
+ * so a run of near-identical players is broken into chunks.
+ */
+const MAX_TIER_SIZE = 8;
+
 export function assignTiers(
   players: TieredPlayer[],
   gapByPosition: Record<string, number>,
   defaultGap: number,
+  maxTierSize = MAX_TIER_SIZE,
 ): Map<string, TierAssignment> {
   const out = new Map<string, TierAssignment>();
   const byPosition = new Map<string, TieredPlayer[]>();
@@ -49,12 +60,21 @@ export function assignTiers(
     const threshold = gapByPosition[position] ?? defaultGap;
 
     let tier = 1;
+    let sizeOfCurrentTier = 0;
+
     for (let i = 0; i < sorted.length; i++) {
       const current = sorted[i]!;
       const next = sorted[i + 1];
       const cliffBelow = next ? current.points - next.points : 0;
+
       out.set(current.playerId, { tier, cliffBelow: round2(cliffBelow) });
-      if (next && cliffBelow > threshold) tier++;
+      sizeOfCurrentTier++;
+
+      if (!next) continue;
+      if (cliffBelow > threshold || sizeOfCurrentTier >= maxTierSize) {
+        tier++;
+        sizeOfCurrentTier = 0;
+      }
     }
   }
 
