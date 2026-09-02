@@ -135,6 +135,15 @@ describe("extractAdp against a real payload shape", () => {
     expect(extractAdp({ stats: { adp_dd_ppr: "12" } }, FULL_PPR)).toBeNull();
   });
 
+  test("treats Sleeper's 999/1000 caps as no data, not a real pick number", () => {
+    // Live payload: every K and DEF carries exactly 999, undrafted players 1000,
+    // real values run 1-395. A cap fed to the survival model would claim the
+    // player is never drafted - wrong for a startable player parked there.
+    expect(extractAdp({ stats: { adp_dd_ppr: 999 } }, FULL_PPR)).toBeNull();
+    expect(extractAdp({ stats: { adp_dd_ppr: 1000 } }, FULL_PPR)).toBeNull();
+    expect(extractAdp({ stats: { adp_dd_ppr: 395 } }, FULL_PPR)?.value).toBe(395);
+  });
+
   test("skips dynasty ADP even when it is the only thing present", () => {
     // Better to fall back to search_rank than to rank a redraft off dynasty values.
     expect(extractAdp({ stats: { adp_dynasty_ppr: 5 } }, FULL_PPR)).toBeNull();

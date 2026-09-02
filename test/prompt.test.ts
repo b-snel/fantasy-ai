@@ -1,7 +1,15 @@
 import { test, expect, describe } from "bun:test";
 import { fixtureDraft, fixtureLeague, makeFixtureByes, makeFixturePlayers } from "../fixtures/index.ts";
 import { buildStaticPrefix, buildVolatileTail, type VolatileInput } from "../src/llm/prompt.ts";
-import { shouldCallModel, hash, summariseUsage } from "../src/llm/recommend.ts";
+import {
+  cacheWarning,
+  hash,
+  recordUsage,
+  resetCacheHealth,
+  shouldCallModel,
+  summariseUsage,
+  supportsAdaptiveThinking,
+} from "../src/llm/recommend.ts";
 import { parseRosterPositions, replacementPoints, replacementRanks } from "../src/engine/replacement.ts";
 import { evaluateRoster } from "../src/engine/roster.ts";
 import { buildShortlist, scoreBoard, type RankablePlayer } from "../src/engine/rank.ts";
@@ -148,6 +156,18 @@ describe("volatile tail", () => {
     const tail = buildVolatileTail(makeVolatile());
     expect(tail).toContain("name | pos | team | bye | proj | vorp | vona");
     expect(tail).not.toContain('"projectedPoints"');
+  });
+
+  test("leads every candidate row with the player_id the schema demands back", () => {
+    // The schema asks for player_id "copied exactly from the table". Without an id
+    // column the model's only option is the name, and the UI then fails to match
+    // cards to candidates - observed in the first live dry run.
+    const v = makeVolatile();
+    const tail = buildVolatileTail(v);
+    expect(tail).toContain("id | name | pos");
+    for (const c of v.candidates) {
+      expect(tail).toContain(`\n${c.playerId} | ${c.name} | `);
+    }
   });
 
   test("stays small - this is the part billed at full price every call", () => {
@@ -321,6 +341,82 @@ describe("usage accounting", () => {
 
   test("tolerates a missing usage object", () => {
     expect(summariseUsage("claude-opus-5", null, 0).estimatedCostUsd).toBe(0);
+  });
+});
+
+describe("supportsAdaptiveThinking - the parameter gate that stopped the 400 storm", () => {
+  test("classifies the configured models correctly", () => {
+    expect(supportsAdaptiveThinking(config.llm.onClockModel)).toBe(true);
+    expect(supportsAdaptiveThinking(config.llm.backgroundModel)).toBe(false);
+  });
+
+  test("catches dated snapshots and aliases, not just exact ids", () => {
+    // config.ts promises draft-day model changes are one edit; a snapshot id
+    // slipping past an exact-string match would re-trigger the 400s live.
+    expect(supportsAdaptiveThinking("claude-haiku-4-5-20251001")).toBe(false);
+    expect(supportsAdaptiveThinking("claude-sonnet-4-5")).toBe(false);
+    expect(supportsAdaptiveThinking("claude-3-5-haiku-20241022")).toBe(false);
+    expect(supportsAdaptiveThinking("claude-opus-5")).toBe(true);
+    expect(supportsAdaptiveThinking("claude-sonnet-5")).toBe(true);
+    expect(supportsAdaptiveThinking("claude-opus-4-6")).toBe(true);
+  });
+});
+
+describe("cacheWarning - the prefix-drift detector", () => {
+  // Drift's signature: consecutive calls that WRITE a cache entry without ever
+  // READING one. A single write is the normal first call of a session; repeated
+  // writes mean each request is caching a prefix nobody reuses.
+  const usage = (over: Partial<ReturnType<typeof summariseUsage>>) => ({
+    ...summariseUsage("claude-opus-5", null, 0),
+    ...over,
+  });
+
+  test("one cache write is a healthy first call, not drift", () => {
+    resetCacheHealth();
+    recordUsage(usage({ cacheWriteTokens: 3400 }));
+    expect(cacheWarning()).toBeNull();
+  });
+
+  test("two consecutive writes with zero reads raises the warning", () => {
+    resetCacheHealth();
+    recordUsage(usage({ cacheWriteTokens: 3400 }));
+    recordUsage(usage({ cacheWriteTokens: 3400 }));
+    expect(cacheWarning()).toContain("drifting");
+  });
+
+  test("a cache read clears the streak", () => {
+    resetCacheHealth();
+    recordUsage(usage({ cacheWriteTokens: 3400 }));
+    recordUsage(usage({ cacheWriteTokens: 3400 }));
+    recordUsage(usage({ cacheReadTokens: 3400 }));
+    expect(cacheWarning()).toBeNull();
+  });
+
+  test("zero reads AND zero writes never warns - that is a prefix below the model minimum", () => {
+    resetCacheHealth();
+    for (let i = 0; i < 5; i++) {
+      recordUsage({ ...summariseUsage("claude-haiku-4-5", null, 0), inputTokens: 3500 });
+    }
+    expect(cacheWarning()).toBeNull();
+    resetCacheHealth();
+  });
+
+  test("fast-served and standard-served calls share one streak per model family", () => {
+    // Fast mode can serve some requests fast (":fast" billing label) and degrade
+    // others to standard. They hit the same prompt cache, so drift alternating
+    // between the two labels must still accumulate to a warning...
+    resetCacheHealth();
+    recordUsage(usage({ model: "claude-opus-5:fast", cacheWriteTokens: 3400 }));
+    recordUsage(usage({ model: "claude-opus-5", cacheWriteTokens: 3400 }));
+    expect(cacheWarning()).toContain("drifting");
+
+    // ...and a read under either label clears the shared streak.
+    resetCacheHealth();
+    recordUsage(usage({ model: "claude-opus-5", cacheWriteTokens: 3400 }));
+    recordUsage(usage({ model: "claude-opus-5:fast", cacheReadTokens: 3400 }));
+    recordUsage(usage({ model: "claude-opus-5", cacheWriteTokens: 3400 }));
+    expect(cacheWarning()).toBeNull();
+    resetCacheHealth();
   });
 });
 

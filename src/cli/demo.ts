@@ -124,6 +124,8 @@ function buildState(): LiveState {
   return {
     status: "ready",
     error: null,
+    draftId: draft.draft_id,
+    isMock: false,
     league: {
       name: fixtureLeague.name,
       teams: shape.teams,
@@ -183,7 +185,10 @@ function buildState(): LiveState {
     tierWarnings: board.tierWarnings,
     effectivelyTied: board.decisiveness.effectivelyTied,
     recommendation: fakeRecommendation(board.shortlist),
+    // The canned recommendation always matches the rendered board.
+    recommendationForPick: board.turn.currentPick,
     recommendationStale: false,
+    cacheWarning: null,
     lastCallReason: "demo mode - canned recommendation, no API call",
     projectionSource: board.projectionSource,
     spendUsd: 0.0312,

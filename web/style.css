@@ -126,6 +126,115 @@ main {
 
 .empty { color: var(--muted); }
 
+/* ---------- loading and freshness ---------- */
+
+.thinking {
+  margin: 0;
+  color: var(--accent);
+  font-size: 14px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.freshness { margin: 0; color: var(--muted); font-size: 13px; }
+
+.card.skeleton { pointer-events: none; }
+
+.sk-line {
+  height: 13px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  margin: 10px 0;
+}
+
+.shimmer { position: relative; overflow: hidden; }
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(232, 236, 241, 0.07), transparent);
+  animation: shimmer 1.6s infinite;
+}
+
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* ---------- home page ---------- */
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.home-panel h2 { margin-top: 0; }
+
+.draftrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  margin: 8px 0;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.draftrow.hero { padding: 16px; }
+.draftrow.active { border-color: var(--accent); }
+
+.draftrow-name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.draftrow-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.draftrow .remove {
+  padding: 6px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.draftrow .remove:hover { color: var(--bad); border-color: var(--bad); }
+
+.badge.st-live { background: rgba(61, 220, 132, 0.15); color: var(--good); }
+.badge.st-done { color: var(--muted); }
+.badge.st-pre { color: var(--muted); }
+
+.starts { margin-top: 8px; color: var(--accent); font-weight: 500; }
+.live-now { color: var(--good); font-weight: 700; }
+
+.addmock { display: flex; gap: 8px; margin-top: 12px; }
+.addmock input {
+  flex: 1;
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.hint { font-size: 12px; margin: 8px 0 0; }
+
+/* Draft-room link back to the home page. */
+.homelink {
+  color: var(--muted);
+  text-decoration: none;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+.homelink:hover { color: var(--text); }
+
 .card {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
@@ -139,6 +248,12 @@ main {
 .card.top {
   border-color: var(--top);
   box-shadow: 0 0 0 1px rgba(255, 209, 102, 0.25);
+}
+
+/* Provisional engine cards, shown while a model call is in flight. */
+.card.engine {
+  border-style: dashed;
+  opacity: 0.92;
 }
 
 .photo {
@@ -209,6 +324,52 @@ main {
 .stats b { color: var(--text); font-weight: 600; }
 .stats .pos-val { color: var(--good); }
 .stats .neg-val { color: var(--bad); }
+
+/* ---------- stat tooltips ---------- */
+
+.tip {
+  position: relative;
+  cursor: help;
+  border-bottom: 1px dotted var(--muted);
+}
+
+.tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 7px);
+  transform: translateX(-50%);
+  width: 230px;
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  font-variant-numeric: normal;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.tip:hover::after,
+.tip:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Pin the bubble to an edge when centering would push it off-screen. */
+.tip-l::after { left: -8px; right: auto; transform: none; }
+.tip-r::after { left: auto; right: -8px; transform: none; }
 
 /* ---------- side panels ---------- */
 

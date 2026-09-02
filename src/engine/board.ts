@@ -10,7 +10,7 @@ import { config } from "../config.ts";
 import { parseRosterPositions, replacementPoints, replacementRanks } from "./replacement.ts";
 import { evaluateRoster, type OwnedPlayer, type RosterState } from "./roster.ts";
 import { buildShortlist, scoreBoard, type RankablePlayer, type ScoredPlayer } from "./rank.ts";
-import { buildDraftShape, getTurnInfo, myRosterIdFromDraft, type DraftShape, type TurnInfo } from "./snake.ts";
+import { buildDraftShape, getTurnInfo, myRosterIdFromDraft, rosterOfMadePick, type DraftShape, type TurnInfo } from "./snake.ts";
 import { isFantasyPosition } from "../sleeper/types.ts";
 import type {
   Draft,
@@ -94,7 +94,7 @@ export function computeBoard(input: BoardInputs): BoardState {
   // metadata is only a display snapshot.
   const drafted = new Set(picks.map((p) => p.player_id));
 
-  const myPicks = picks.filter((p) => p.roster_id === myRosterId);
+  const myPicks = picks.filter((p) => rosterOfMadePick(p, shape) === myRosterId);
   const myPlayers: OwnedPlayer[] = myPicks.map((p) => {
     const player = players[p.player_id];
     const team = player?.team ?? p.metadata?.team ?? null;

@@ -213,12 +213,15 @@ async function main(): Promise<void> {
       console.log(`      ${DIM}adp keys:    none${RESET}`);
     }
 
-    const chosen = extractAdp(sample, league.scoring_settings);
+    // One extraction pass serves both the field report and the sanity check, so
+    // the two can never disagree. The first row may be a sentinel-capped player
+    // (every K and DEF is), which extracts to nothing - report the first that has one.
+    const extracted = (bulk as Array<Record<string, unknown>>)
+      .map((r) => extractAdp(r, league.scoring_settings))
+      .filter((x): x is NonNullable<typeof x> => x != null);
+    const chosen = extracted[0];
     if (chosen) {
-      // Sample the whole page so the sanity check has a real distribution.
-      const values = (bulk as Array<Record<string, unknown>>)
-        .map((r) => extractAdp(r, league.scoring_settings)?.value)
-        .filter((v): v is number => v != null);
+      const values = extracted.map((x) => x.value);
       const sanity = checkAdpSanity(values, league.total_rosters);
 
       record(

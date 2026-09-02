@@ -15,6 +15,8 @@ function stubState(over: Partial<LiveState> = {}): LiveState {
   return {
     status: "ready",
     error: null,
+    draftId: "stub-draft",
+    isMock: false,
     league: { name: "Test League", teams: 12, rounds: 15, scoring: "sleeper_weekly" },
     draftStatus: "drafting",
     currentPick: 7,
@@ -35,18 +37,42 @@ function stubState(over: Partial<LiveState> = {}): LiveState {
     tierWarnings: [],
     effectivelyTied: false,
     recommendation: null,
+    recommendationForPick: null,
     recommendationStale: false,
     lastCallReason: "on the clock",
     projectionSource: "sleeper_weekly",
     spendUsd: 0.031,
     lastUsage: null,
+    cacheWarning: null,
     updatedAt: 1757800000000,
     ...over,
   };
 }
 
 let refreshCalls = 0;
+const switchedTo: string[] = [];
 const listeners = new Set<(s: LiveState) => void>();
+
+/**
+ * Wait until the listener count stops moving. Bun 1.4 started delivering the
+ * stream cancel callback (1.3.x never did), and it lands asynchronously - so a
+ * previous test's reader.cancel() can remove a listener in the middle of this
+ * one. Counting from a settled baseline keeps these tests independent of which
+ * Bun version is running them.
+ */
+async function settledListenerCount(): Promise<number> {
+  // Require several consecutive stable windows - one 10ms window can miss a
+  // cancel that is merely slow - and bound the loop so a pathological flap
+  // fails the test fast instead of hanging it.
+  let stable = 0;
+  let prev = listeners.size;
+  for (let i = 0; i < 50 && stable < 3; i++) {
+    await new Promise((r) => setTimeout(r, 10));
+    stable = listeners.size === prev ? stable + 1 : 0;
+    prev = listeners.size;
+  }
+  return listeners.size;
+}
 
 const session = {
   getState: () => stubState(),
@@ -58,6 +84,10 @@ const session = {
   refresh: async () => {
     refreshCalls++;
   },
+  switchTo: async (draftId: string) => {
+    switchedTo.push(draftId);
+  },
+  currentDraftId: () => "stub-draft",
 } as unknown as DraftSession;
 
 const registry = new SubscriberRegistry();
@@ -71,12 +101,48 @@ afterAll(() => {
 });
 
 describe("routes", () => {
-  test("serves the page shell", async () => {
+  test("serves the home page at the root", async () => {
     const res = await fetch(base + "/");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Draft Assistant");
+    expect(html).toContain('src="/home.js"');
+  });
+
+  test("serves the draft room at /draft", async () => {
+    const res = await fetch(base + "/draft");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Draft Assistant");
     expect(html).toContain('src="/app.js"');
+  });
+
+  test("switching the session hands the draft id to the session", async () => {
+    const res = await fetch(base + "/api/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ draftId: "1400652160391249920" }),
+    });
+    expect(res.status).toBe(200);
+    expect(switchedTo).toContain("1400652160391249920");
+  });
+
+  test("switching without a draft id is a 400, not a crash", async () => {
+    const res = await fetch(base + "/api/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("registering an unparseable mock is a 400 before any network call", async () => {
+    const res = await fetch(base + "/api/drafts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ draft: "not a draft link" }),
+    });
+    expect(res.status).toBe(400);
   });
 
   test("serves the client script and stylesheet with correct content types", async () => {
@@ -146,7 +212,7 @@ describe("SSE stream", () => {
   });
 
   test("an explicit goodbye unsubscribes immediately", async () => {
-    const before = listeners.size;
+    const before = await settledListenerCount();
     const id = "bye-test";
     const res = await fetch(`${base}/api/stream?id=${id}`);
     const reader = res.body!.getReader();
@@ -155,12 +221,19 @@ describe("SSE stream", () => {
 
     await fetch(`${base}/api/bye?id=${id}`, { method: "POST" });
     expect(listeners.size).toBe(before);
+    // And the registry no longer knows the id, so a heartbeat says reconnect.
+    const beat = await fetch(`${base}/api/heartbeat?id=${id}`, { method: "POST" });
+    expect(((await beat.json()) as { known: boolean }).known).toBe(false);
 
-    await reader.cancel();
+    // The HTTP stream itself must END on teardown. If it stays open, a client
+    // whose subscription was reaped holds a silent connection forever: no data,
+    // no error, no EventSource auto-reconnect - a page frozen on old state.
+    const next = await reader.read();
+    expect(next.done).toBe(true);
   });
 
   test("a reconnect reusing an id replaces its subscription rather than stacking", async () => {
-    const before = listeners.size;
+    const before = await settledListenerCount();
     const id = "reconnect-test";
 
     const first = await fetch(`${base}/api/stream?id=${id}`);
@@ -231,6 +304,30 @@ describe("SubscriberRegistry", () => {
     expect(firstClosed).toBe(true);
     expect(reg.size).toBe(1);
     reg.stop();
+  });
+
+  test("a stale owner's late removal cannot kill a replacement subscription", () => {
+    // Bun 1.4 delivers stream cancel callbacks asynchronously, so an old
+    // connection's cancel can land AFTER a reconnect reused its id. Ownership-
+    // checked removal must ignore it; unconditional removal here would silently
+    // stop live updates mid-draft.
+    const reg = new SubscriberRegistry();
+    const closeOld = () => {};
+    let newClosed = false;
+    const closeNew = () => {
+      newClosed = true;
+    };
+
+    reg.add("a", closeOld);
+    reg.add("a", closeNew); // reconnect reuses the id
+
+    reg.removeIf("a", closeOld); // the old stream's deferred cancel fires late
+    expect(reg.size).toBe(1);
+    expect(newClosed).toBe(false);
+
+    reg.removeIf("a", closeNew); // the rightful owner can still remove itself
+    expect(reg.size).toBe(0);
+    expect(newClosed).toBe(true);
   });
 
   test("stop releases everything", () => {

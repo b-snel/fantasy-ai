@@ -82,6 +82,9 @@ Every candidate arrives already scored. You do not compute these; you interpret
 them. Do not recalculate them, and do not contradict them with remembered rankings —
 they are derived from this league's actual settings, and your training data is not.
 
+- **id** — the player's Sleeper id. Copy it into every player_id field exactly as it
+  appears in the table; it is how the app matches your cards back to the board.
+
 - **proj** — projected fantasy points for the full season, computed by running the
   player's projected stat line through this league's exact scoring settings.
 
@@ -284,10 +287,11 @@ export function buildVolatileTail(v: VolatileInput): string {
         `Sleeper's relevance ranking. Treat point values as ordinal, not precise.`,
     );
   }
-  lines.push(`name | pos | team | bye | proj | vorp | vona | tier | left | cliff | surv | adpΔ | need | score | flag`);
+  lines.push(`id | name | pos | team | bye | proj | vorp | vona | tier | left | cliff | surv | adpΔ | need | score | flag`);
   for (const c of v.candidates) {
     lines.push(
       [
+        c.playerId,
         c.name,
         c.position,
         c.team ?? "FA",

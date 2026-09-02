@@ -13,8 +13,10 @@
   <body>
     <header class="bar">
       <div class="bar-left">
+        <a href="/" class="homelink">‹ Drafts</a>
         <span id="pick" class="pick">—</span>
         <span id="round" class="muted">round —</span>
+        <span id="mockbadge" class="badge flag" style="display: none">MOCK</span>
       </div>
       <div class="bar-mid">
         <span id="turn" class="turn">connecting…</span>
@@ -53,9 +55,10 @@
           <table id="shortlist" class="shortlist">
             <thead>
               <tr>
-                <th>Player</th><th>Pos</th><th title="Value over replacement">VORP</th>
-                <th title="Value over next available at this position">VONA</th>
-                <th title="Chance he lasts to your next pick">Surv</th>
+                <th>Player</th><th>Pos</th>
+                <th><span class="tip tip-r" data-tip="Value over replacement: points above the worst starter this league will field at the position. Makes players at different positions comparable.">VORP</span></th>
+                <th><span class="tip tip-r" data-tip="Value over next available: points you give up by passing and taking the best player left at this position at your next pick. High = act now, low = can wait.">VONA</span></th>
+                <th><span class="tip tip-r" data-tip="Chance this player is still on the board at your next pick, modeled from average draft position.">Surv</span></th>
               </tr>
             </thead>
             <tbody></tbody>

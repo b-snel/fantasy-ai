@@ -126,6 +126,10 @@ export const getLeagueUsers = (leagueId: string) =>
 export const getLeagueDrafts = (leagueId: string) =>
   getJson<Draft[]>(api(`/league/${leagueId}/drafts`));
 
+/** Every LEAGUE draft the user is in this season. Mock drafts are not included. */
+export const getUserDrafts = (userId: string, season: string) =>
+  getJson<Draft[]>(api(`/user/${userId}/drafts/nfl/${season}`));
+
 export const getDraft = (draftId: string) => getJson<Draft>(api(`/draft/${draftId}`));
 
 /** The live feed. Polled every ~2s during an active draft. */
@@ -195,6 +199,14 @@ export async function getPlayers(opts: { force?: boolean } = {}): Promise<Player
  * list (which is ordered newest-first for leagues with history).
  */
 export async function resolveDraft(league: League): Promise<Draft> {
+  // An explicit override (SLEEPER_DRAFT_ID) wins - it is how a mock draft is
+  // followed with the real league's scoring and rosters. Fail loudly rather than
+  // fall through: silently tracking the wrong draft is worse than an error.
+  if (config.draftId) {
+    const draft = await getDraft(config.draftId);
+    if (!draft) throw new Error(`SLEEPER_DRAFT_ID=${config.draftId} did not resolve to a draft`);
+    return draft;
+  }
   if (league.draft_id) {
     const draft = await getDraft(league.draft_id);
     if (draft) return draft;

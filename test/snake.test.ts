@@ -1,10 +1,11 @@
 import { test, expect, describe } from "bun:test";
-import type { Draft, TradedPick } from "../src/sleeper/types.ts";
+import type { Draft, DraftPick, TradedPick } from "../src/sleeper/types.ts";
 import {
   buildDraftShape,
   getTurnInfo,
   isForwardRound,
   picksForRoster,
+  rosterOfMadePick,
   rosterOfPick,
   roundOfPick,
   slotOfPick,
@@ -124,6 +125,42 @@ describe("roster ownership and trades", () => {
     expect(picks[1]).toBe(12 + (12 - 3 + 1)); // 22
     // Strictly increasing.
     for (let i = 1; i < picks.length; i++) expect(picks[i]!).toBeGreaterThan(picks[i - 1]!);
+  });
+});
+
+describe("attributing made picks", () => {
+  const madePick = (over: Partial<DraftPick>): DraftPick => ({
+    draft_id: "d1",
+    pick_no: 9,
+    round: 1,
+    draft_slot: 9,
+    roster_id: null,
+    player_id: "9221",
+    picked_by: null,
+    is_keeper: null,
+    metadata: {},
+    ...over,
+  });
+
+  test("league drafts: roster_id on the pick is authoritative", () => {
+    const shape = buildDraftShape(makeDraft());
+    expect(rosterOfMadePick(madePick({ roster_id: 4 }), shape)).toBe(4);
+  });
+
+  test("mock drafts: roster_id is null and draft_slot resolves through the map", () => {
+    // A live league_mock payload carries roster_id: null on every pick. Direct
+    // roster_id comparison attributed nothing to anyone - every roster looked
+    // empty for the whole draft while the pick count marched on.
+    const shape = buildDraftShape(makeDraft());
+    expect(rosterOfMadePick(madePick({ roster_id: null, draft_slot: 9 }), shape)).toBe(9);
+  });
+
+  test("falls back to pick-order math when even the slot is missing", () => {
+    const shape = buildDraftShape(makeDraft());
+    const bare = madePick({ roster_id: null, pick_no: 16 });
+    (bare as { draft_slot: number | null }).draft_slot = null;
+    // Pick 16 in a 12-team snake is round 2, slot 9.
+    expect(rosterOfMadePick(bare, shape)).toBe(9);
   });
 });
 

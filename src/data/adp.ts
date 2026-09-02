@@ -48,6 +48,17 @@ export function formatPreference(scoring: ScoringSettings): AdpFormat[] {
  */
 const WRONG_GAME = ["dynasty", "rookie", "2qb", "superflex", "bestball", "best_ball"];
 
+/**
+ * Sleeper caps its draft-day ADP rather than omitting it: 999 marks positions the
+ * board does not track at all (verified live: every K and DEF sits at exactly 999)
+ * and 1000 marks individually undrafted players, while real values run 1-395.
+ * Treating a cap as a real pick number tells the survival model "this player is
+ * never drafted", which for a startable player parked at the cap (it happens - Josh
+ * Jacobs, projected ~RB15, carried 1000 on 2026-09-01) is exactly wrong. No data,
+ * which falls back to survival's neutral prior, beats confidently wrong data.
+ */
+const SENTINEL_MIN = 999;
+
 /** Is this key an overall-ADP field we can actually use? */
 export function isUsableAdpKey(key: string): boolean {
   const k = key.toLowerCase();
@@ -75,6 +86,7 @@ export function extractAdp(
   for (const source of sources) {
     for (const [key, value] of Object.entries(source)) {
       if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
+      if (value >= SENTINEL_MIN) continue; // 999/1000 mean "not tracked", not "pick 999"
       if (!isUsableAdpKey(key)) continue;
       // Deterministic on duplicates: first source wins, so row beats stats.
       if (!candidates.has(key)) candidates.set(key, value);

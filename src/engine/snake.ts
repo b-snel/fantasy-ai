@@ -7,7 +7,7 @@
  * that changed hands via trade.
  */
 
-import type { Draft, TradedPick } from "../sleeper/types.ts";
+import type { Draft, DraftPick, TradedPick } from "../sleeper/types.ts";
 
 export interface DraftShape {
   teams: number;
@@ -92,6 +92,21 @@ export function rosterOfPick(pickNo: number, shape: DraftShape): number | null {
 }
 
 export const totalPicks = (shape: DraftShape): number => shape.teams * shape.rounds;
+
+/**
+ * Which roster a pick that has already been MADE belongs to.
+ *
+ * League drafts fill `roster_id` on every pick. Mock drafts do not - a live
+ * league_mock payload carries `roster_id: null` and only sets `draft_slot` - so
+ * comparing `pick.roster_id` directly silently attributes nothing to anyone:
+ * every roster looks empty while the pick count marches on. Fall back through
+ * the slot mapping, then to pick-order math if even the slot is missing.
+ */
+export function rosterOfMadePick(pick: DraftPick, shape: DraftShape): number | null {
+  if (pick.roster_id != null) return pick.roster_id;
+  if (pick.draft_slot != null) return shape.slotToRoster.get(pick.draft_slot) ?? null;
+  return rosterOfPick(pick.pick_no, shape);
+}
 
 /** Every overall pick number belonging to `rosterId`, in order. */
 export function picksForRoster(rosterId: number, shape: DraftShape): number[] {

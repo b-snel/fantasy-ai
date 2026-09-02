@@ -8,6 +8,14 @@ export const config = {
   userId: process.env.SLEEPER_USER_ID ?? "434221843767881728",
   username: "tugger_woods",
 
+  /**
+   * Follow a specific draft instead of the league's own — this is how you point
+   * the assistant at a mock: create a league mock in Sleeper, then
+   * `SLEEPER_DRAFT_ID=<id> bun start`. Scoring, rosters and projections still
+   * come from the league above; only the draft being tracked changes.
+   */
+  draftId: process.env.SLEEPER_DRAFT_ID ?? null,
+
   port: Number(process.env.PORT ?? 5173),
 
   sleeper: {
@@ -34,6 +42,13 @@ export const config = {
   llm: {
     /** On the clock: best judgment, cost is irrelevant at this volume. */
     onClockModel: "claude-opus-5",
+    /**
+     * FAST_MODE=1 runs the Opus paths (recommendations and ask) in fast mode:
+     * the same model at up to 2.5x output speed for 2x the price - a fresh
+     * on-clock card in ~8-10s instead of ~20s. Set it for the whole draft or
+     * not at all: switching speed invalidates the prompt cache.
+     */
+    fastMode: process.env.FAST_MODE === "1",
     /** Background re-ranks while others pick. */
     backgroundModel: "claude-haiku-4-5",
     /** Pre-draft news sweep needs a model supporting web_search_20260209. */
@@ -81,6 +96,8 @@ export const config = {
     news: "data/news.json",
     schedule: "data/schedule.json",
     capabilities: "data/capabilities.json",
+    /** Locally remembered mock drafts - Sleeper has no endpoint that lists them. */
+    mocks: "data/mocks.json",
   },
 } as const;
 

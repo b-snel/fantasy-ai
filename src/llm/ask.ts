@@ -12,7 +12,14 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { config } from "../config.ts";
 import { ASK_SYSTEM_PROMPT, buildTools, type ToolContext } from "../tools/index.ts";
-import { summariseUsage, type CallUsage } from "./recommend.ts";
+import {
+  disableFastMode,
+  fastModeFor,
+  isFastModeLimit,
+  recordUsage,
+  summariseUsage,
+  type CallUsage,
+} from "./recommend.ts";
 
 export interface AskResult {
   answer: string;
@@ -43,11 +50,21 @@ export async function ask(question: string, getContext: () => ToolContext): Prom
   });
 
   const started = performance.now();
+  const fastRequested = fastModeFor(config.llm.onClockModel);
   const runner = getClient().beta.messages.toolRunner({
     model: config.llm.onClockModel,
     max_tokens: 4000,
     thinking: { type: "adaptive" },
     output_config: { effort: "medium" },
+    ...(fastRequested && {
+      speed: "fast" as const,
+      betas: ["fast-mode-2026-02-01"],
+    }),
+    // Automatic caching for the growing tool-loop tail: the breakpoint rides the
+    // last message block, so each turn re-reads the prior turns instead of
+    // re-paying for them. Composes with the 1-hour system breakpoint below (the
+    // longer-TTL entry sits earlier in the prefix, as required).
+    cache_control: { type: "ephemeral" },
     system: [
       {
         type: "text",
@@ -60,17 +77,51 @@ export async function ask(question: string, getContext: () => ToolContext): Prom
   });
 
   let final: Anthropic.Beta.BetaMessage | null = null;
+  // Every turn of the loop bills, not just the last one; sum them or under-report.
+  // Keyed off the literal so a new billed field only needs adding here once.
+  const totals = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+  };
 
-  for await (const message of runner) {
-    for (const block of message.content) {
-      if (block.type === "tool_use") toolCalls.push(block.name);
+  let usage: CallUsage;
+  let observedSpeed: string | null | undefined;
+  try {
+    for await (const message of runner) {
+      for (const block of message.content) {
+        if (block.type === "tool_use") toolCalls.push(block.name);
+      }
+      for (const k of Object.keys(totals) as Array<keyof typeof totals>) {
+        totals[k] += message.usage[k] ?? 0;
+      }
+      observedSpeed = (message.usage as { speed?: string | null }).speed ?? observedSpeed;
+      // The runner does not auto-resume a paused server-tool turn; there are no
+      // server tools here, but checking costs nothing and fails loudly if that changes.
+      if (message.stop_reason === "pause_turn") {
+        runner.pushMessages({ role: "assistant", content: message.content });
+      }
+      final = message;
     }
-    // The runner does not auto-resume a paused server-tool turn; there are no
-    // server tools here, but checking costs nothing and fails loudly if that changes.
-    if (message.stop_reason === "pause_turn") {
-      runner.pushMessages({ role: "assistant", content: message.content });
+  } catch (err) {
+    if (fastRequested && isFastModeLimit(err)) {
+      // No fast-mode quota on this org: retry the whole question at standard
+      // speed. fastModeFor is now false, so this recurses exactly once.
+      disableFastMode(err instanceof Error ? err.message.slice(0, 140) : String(err));
+      return ask(question, getContext);
     }
-    final = message;
+    throw err;
+  } finally {
+    // A loop that dies on turn four still spent real money on turns one to three;
+    // the ledger must see that spend even when no answer comes back.
+    usage = summariseUsage(
+      config.llm.onClockModel,
+      totals,
+      Math.round(performance.now() - started),
+      observedSpeed,
+    );
+    if (usage.estimatedCostUsd > 0) recordUsage(usage);
   }
 
   if (!final) throw new Error("No response from the model.");
@@ -83,7 +134,7 @@ export async function ask(question: string, getContext: () => ToolContext): Prom
 
   return {
     answer: answer || "No answer returned.",
-    usage: summariseUsage(config.llm.onClockModel, final.usage, Math.round(performance.now() - started)),
+    usage,
     toolCalls,
   };
 }

@@ -131,7 +131,8 @@ export interface LeagueUser {
 /** GET /v1/draft/{draft_id} */
 export interface Draft {
   draft_id: string;
-  league_id: string;
+  /** Null for mock drafts - the reliable tell that a draft IS a mock. */
+  league_id: string | null;
   sport: string;
   season: string;
   season_type: string;
