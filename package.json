@@ -1,0 +1,27 @@
+{
+  "name": "fantasy-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live Sleeper fantasy football draft assistant",
+  "scripts": {
+    "start": "bun run src/cli/draft.ts",
+    "dev": "bun --hot src/cli/draft.ts",
+    "doctor": "bun run src/cli/doctor.ts",
+    "sync": "bun run src/cli/sync.ts",
+    "mock": "bun run src/cli/mock.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "demo": "bun run src/cli/demo.ts",
+    "news": "bun run src/cli/news.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
+    "hono": "^4.13.5",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}

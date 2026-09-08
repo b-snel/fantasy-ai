@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Draft Assistant — Drafts</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1216'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%234ba3ff'%3E%E2%97%89%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="bar-left">
+        <span class="pick">Draft Assistant</span>
+      </div>
+      <div class="bar-mid"><span class="muted">Pick a draft to follow</span></div>
+      <div class="bar-right"></div>
+    </header>
+
+    <main class="home">
+      <section class="panel home-panel">
+        <h2>Upcoming draft</h2>
+        <div id="upcoming"><p class="empty">Loading…</p></div>
+      </section>
+
+      <section class="panel home-panel">
+        <h2>Mock drafts</h2>
+        <div id="mocks"><p class="empty">Loading…</p></div>
+        <form id="addmock" class="addmock">
+          <input
+            id="mockinput"
+            type="text"
+            placeholder="Paste a Sleeper draft link or id…"
+            autocomplete="off"
+          />
+          <button type="submit">Add</button>
+        </form>
+        <p class="muted hint">
+          Sleeper has no API that lists your mocks — paste one once and it is
+          remembered here. Opening one any other way remembers it too.
+        </p>
+        <p id="mockerr" class="err"></p>
+      </section>
+
+      <section class="panel home-panel">
+        <h2>Other league drafts</h2>
+        <div id="others"><p class="empty">Loading…</p></div>
+      </section>
+    </main>
+
+    <script src="/home.js"></script>
+  </body>
+</html>

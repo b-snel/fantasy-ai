@@ -1,0 +1,47 @@
+{
+  "league_id": "1348178795533701120",
+  "name": "Test Dynasty League",
+  "season": "2026",
+  "season_type": "regular",
+  "status": "pre_draft",
+  "sport": "nfl",
+  "total_rosters": 12,
+  "draft_id": "1348178795533701121",
+  "previous_league_id": null,
+  "avatar": null,
+  "roster_positions": [
+    "QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF",
+    "BN", "BN", "BN", "BN", "BN", "BN"
+  ],
+  "scoring_settings": {
+    "pass_yd": 0.04,
+    "pass_td": 4,
+    "pass_int": -2,
+    "pass_2pt": 2,
+    "rush_yd": 0.1,
+    "rush_td": 6,
+    "rush_2pt": 2,
+    "rec": 1,
+    "rec_yd": 0.1,
+    "rec_td": 6,
+    "rec_2pt": 2,
+    "fum_lost": -2,
+    "fgm_0_19": 3,
+    "fgm_20_29": 3,
+    "fgm_30_39": 3,
+    "fgm_40_49": 4,
+    "fgm_50p": 5,
+    "xpm": 1,
+    "sack": 1,
+    "int": 2,
+    "def_td": 6
+  },
+  "settings": {
+    "num_teams": 12,
+    "draft_rounds": 15,
+    "playoff_week_start": 15,
+    "playoff_teams": 6,
+    "max_keepers": 0,
+    "type": 0
+  }
+}
