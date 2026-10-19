@@ -10,7 +10,7 @@
 import { FANTASY_POSITIONS, type FantasyPosition } from "../sleeper/types.ts";
 
 /** Slots that can be filled by more than one position. */
-const FLEX_ELIGIBILITY: Record<string, FantasyPosition[]> = {
+export const FLEX_ELIGIBILITY: Record<string, FantasyPosition[]> = {
   FLEX: ["RB", "WR", "TE"],
   WRRB_FLEX: ["RB", "WR"],
   REC_FLEX: ["WR", "TE"],

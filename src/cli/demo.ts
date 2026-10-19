@@ -11,6 +11,8 @@
  */
 
 import { fixtureDraft, fixtureLeague, makeFixtureByes, makeFixturePlayers } from "../../fixtures/index.ts";
+import { fixtureTradeSource } from "../../fixtures/trade.ts";
+import { TradeService } from "../server/trades.ts";
 import { projectionsFromSearchRank } from "../data/projections.ts";
 import { playerImages } from "../data/photos.ts";
 import { computeBoard } from "../engine/board.ts";
@@ -220,10 +222,11 @@ const session = {
 } as unknown as DraftSession;
 
 const registry = new SubscriberRegistry();
-const app = createServer(session, registry);
+const app = createServer(session, registry, new TradeService(fixtureTradeSource()));
 const server = Bun.serve({ port: config.port, fetch: app.fetch });
 
 console.log(`\n  Demo UI at http://localhost:${server.port}`);
+console.log(`  Trade analyzer (fixture league): http://localhost:${server.port}/trades`);
 console.log(`  Fixture data, canned recommendation, no API key needed.`);
 console.log(`  Pick ${picks.length + 1} of ${shape.teams * shape.rounds}.\n`);
 

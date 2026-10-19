@@ -88,6 +88,47 @@ export const config = {
     defaultTierGap: 12,
   },
 
+  /**
+   * The in-season trade analyzer (src/trade/). Values are in projected points per
+   * week over the rest-of-season window, so "0.5" reads as half a point a week.
+   */
+  trade: {
+    /** A trade must improve your expected lineup by at least this much to be shown. */
+    minGainPerWeek: 0.5,
+    /**
+     * The partner's expected lineup may get at most this much worse. Slightly
+     * negative on purpose: a trade that is a wash for them but looks like a win
+     * on paper is still one a reasonable manager accepts.
+     */
+    maxPartnerLossPerWeek: 0.25,
+    /**
+     * "On paper" fairness: the market value the partner receives over the value
+     * they send. Below this a trade reads as a fleecing whatever the lineup math
+     * says, and gets declined.
+     */
+    minMarketRatio: 0.9,
+    /** Search pruning only: past this you are overpaying so badly it never helps you. */
+    maxMarketRatio: 2.5,
+    /**
+     * Stud premium in the market model: the best piece of a package counts in full,
+     * each further piece a little less. Two quarters are not a half-dollar.
+     */
+    packageWeights: [1, 0.8, 0.65, 0.5],
+    /** Chance a given starter misses a given week; prices bench depth as insurance. */
+    injuryRate: 0.08,
+    /** The waiver floor is the Nth-best free agent at a position each week. */
+    waiverDepth: 2,
+    /** How many of each roster's most valuable players the search considers. */
+    poolSize: 12,
+    /** Smaller pool for three-player packages, which grow combinatorially. */
+    poolSizeForTriples: 8,
+    /** Results per partner in league-wide mode, and overall. */
+    perPartnerLimit: 2,
+    resultLimit: 20,
+    /** Rosters change through waivers; refetch them when older than this. */
+    rosterMaxAgeMs: 60_000,
+  },
+
   paths: {
     dataDir: "data",
     players: "data/players.json",
@@ -95,6 +136,8 @@ export const config = {
     adp: "data/adp.json",
     news: "data/news.json",
     schedule: "data/schedule.json",
+    /** Rest-of-season weekly projections for the trade analyzer. */
+    ros: "data/ros.json",
     capabilities: "data/capabilities.json",
     /** Locally remembered mock drafts - Sleeper has no endpoint that lists them. */
     mocks: "data/mocks.json",
