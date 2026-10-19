@@ -460,10 +460,163 @@ function renderTrade(t, opts) {
       <div class="tactions">
         <button type="button" data-copy="${escapeAttr(t.key)}">Copy pitch</button>
         ${opts.proposal ? "" : `<button type="button" data-explore="${escapeAttr(t.key)}" title="Pin these players and search around this deal">Explore this deal</button>`}
+        <button type="button" class="deepbtn" data-deep="${escapeAttr(t.key)}" title="${escapeAttr(DEEP_TIP)}">Ask Claude</button>
         ${t.alternatives ? `<span class="muted small">${t.alternatives} similar variation${t.alternatives > 1 ? "s" : ""}</span>` : ""}
       </div>
       <p class="pitch muted small" hidden></p>
+      <div class="deep" data-deep-for="${escapeAttr(t.key)}">${renderDeep(deepJobs.get(t.key))}</div>
     </article>`;
+}
+
+// ---------------------------------------------------------------------------
+// Deep analysis: Claude's second opinion on one trade
+// ---------------------------------------------------------------------------
+
+const DEEP_TIP =
+  "Claude Opus 5.5 reviews this exact trade: searches recent news, weighs your standings, " +
+  "and tests counter-offers with the engine. About $0.30-0.60 and one to two minutes.";
+
+/** Trade key -> the latest deep-analysis job for it, so re-renders keep the panel. */
+const deepJobs = new Map();
+const deepPolling = new Set();
+
+async function startDeep(key, fresh = false) {
+  const trade = findTrade(key);
+  if (!trade) return;
+  deepJobs.set(key, { status: "starting", steps: [], startedAt: Date.now() });
+  paintDeep(key);
+  try {
+    const res = await fetch("/api/trades/deep", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        partner: trade.partner.rosterId,
+        give: trade.give.map((p) => p.playerId),
+        get: trade.get.map((p) => p.playerId),
+        fresh,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+    deepJobs.set(key, data);
+  } catch (err) {
+    deepJobs.set(key, { status: "error", error: String(err.message ?? err), steps: [] });
+  }
+  paintDeep(key);
+  void pollDeep(key);
+}
+
+async function pollDeep(key) {
+  if (deepPolling.has(key)) return;
+  deepPolling.add(key);
+  try {
+    while (deepJobs.get(key)?.status === "running") {
+      await new Promise((r) => setTimeout(r, 1500));
+      const job = deepJobs.get(key);
+      if (!job?.id) break;
+      try {
+        const res = await fetch(`/api/trades/deep/${encodeURIComponent(job.id)}`);
+        if (res.ok) deepJobs.set(key, await res.json());
+        else if (res.status === 404) deepJobs.set(key, { ...job, status: "error", error: "The server restarted - run it again." });
+      } catch {
+        // The server is restarting; keep polling.
+      }
+      paintDeep(key);
+    }
+  } finally {
+    deepPolling.delete(key);
+  }
+}
+
+function paintDeep(key) {
+  for (const box of document.querySelectorAll(".deep")) {
+    if (box.dataset.deepFor === key) box.innerHTML = renderDeep(deepJobs.get(key));
+  }
+}
+
+function renderDeep(job) {
+  if (!job) return "";
+  if (job.status === "starting" || job.status === "running") {
+    const secs = Math.round((Date.now() - (job.startedAt ?? Date.now())) / 1000);
+    const steps = (job.steps ?? []).slice(-6);
+    return `
+      <div class="deep-box running">
+        <div class="deep-head"><span class="thinking">Claude is analyzing this trade… ${secs}s</span></div>
+        <ul class="deep-steps">${steps.map((s) => `<li class="step-${escapeAttr(s.kind)}">${escapeHtml(s.text)}</li>`).join("")}</ul>
+      </div>`;
+  }
+  if (job.status === "error") {
+    return `
+      <div class="deep-box">
+        <p class="err">${escapeHtml(job.error ?? "Deep analysis failed.")}</p>
+        ${job.trade ? `<button type="button" data-deep-fresh="${escapeAttr(job.trade.key)}">Try again</button>` : ""}
+      </div>`;
+  }
+  return renderVerdict(job);
+}
+
+function renderVerdict(job) {
+  const v = job.verdict;
+  const list = (xs) => `<ul class="rationale">${xs.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`;
+  const secs = job.finishedAt ? Math.round((job.finishedAt - job.startedAt) / 1000) : 0;
+  const signed = (n) => `${n > 0 ? "+" : n < 0 ? "−" : "±"}${Math.abs(n).toFixed(1)}`;
+
+  let counter = "";
+  if (v.counter_offer) {
+    const c = job.counter;
+    const numbers = c
+      ? `<p class="small">Engine check: you <b>${signed(c.myGain)}</b>/wk · them <b>${signed(c.theirGain)}</b>/wk · ` +
+        `${Math.round(c.marketRatio * 100)}% on paper for them · ${acceptanceLabel(c.acceptance).text} ~${Math.round(c.acceptance * 100)}%</p>`
+      : job.counterNote
+        ? `<p class="small err">Could not score it: ${escapeHtml(job.counterNote)}</p>`
+        : "";
+    counter = `
+      <div class="deep-counter">
+        <div class="why-h">Counter-offer</div>
+        <p><b>Give</b> ${escapeHtml(v.counter_offer.give.join(" + "))} &nbsp;⇄&nbsp; <b>Get</b> ${escapeHtml(v.counter_offer.get.join(" + "))}</p>
+        <p class="small muted">${escapeHtml(v.counter_offer.why)}</p>
+        ${numbers}
+        ${c ? `<button type="button" data-counter="${escapeAttr(job.trade.key)}">Open this counter</button>` : ""}
+      </div>`;
+  }
+
+  const news = v.news.length
+    ? `<div class="why-h">News</div><ul class="rationale">${v.news
+        .map((n) => `<li><b>${escapeHtml(n.player)}</b>: ${escapeHtml(n.note)}</li>`)
+        .join("")}</ul>`
+    : "";
+  const sources = job.sources?.length
+    ? `<p class="deep-sources small muted">Sources: ${job.sources
+        .map((src) => `<a href="${escapeAttr(src.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(src.title)}</a>`)
+        .join(" · ")}</p>`
+    : "";
+
+  return `
+    <div class="deep-box">
+      <div class="deep-head">
+        <span class="why-h">Claude's read</span>
+        <span class="badge decision-${escapeAttr(v.decision)}">${escapeHtml(v.decision)}</span>
+        <span class="muted small">${escapeHtml(v.confidence)} confidence</span>
+      </div>
+      <p class="deep-headline">${escapeHtml(v.headline)}</p>
+      <p class="deep-summary">${escapeHtml(v.summary)}</p>
+      ${counter}
+      <div class="whys">
+        <div><div class="why-h">For you</div>${list(v.for_you)}</div>
+        <div><div class="why-h">Against</div>${list(v.against)}</div>
+      </div>
+      ${news}
+      <div class="why-h">Standings</div><p class="small">${escapeHtml(v.standings)}</p>
+      <div class="why-h">Your roster after</div><p class="small">${escapeHtml(v.roster_after)}</p>
+      ${v.pitch ? `<div class="why-h">Message to send</div><p class="pitch small">${escapeHtml(v.pitch)}</p>` : ""}
+      <div class="tactions">
+        ${v.pitch ? `<button type="button" data-copy-claude="${escapeAttr(job.trade.key)}">Copy message</button>` : ""}
+        <button type="button" data-deep-fresh="${escapeAttr(job.trade.key)}" title="Run a fresh analysis">Run again</button>
+      </div>
+      <p class="deep-meta small muted">${job.reused ? "From a run earlier on these same rosters · " : ""}${escapeHtml(job.model ?? "")} · ${job.searches} web search${job.searches === 1 ? "" : "es"} · ${job.engineCalls} engine check${job.engineCalls === 1 ? "" : "s"} · $${(job.costUsd ?? 0).toFixed(2)} · ${secs}s</p>
+      ${sources}
+      <details class="small"><summary class="muted">What Claude was told</summary><pre class="briefing">${escapeHtml(job.briefing)}</pre></details>
+    </div>`;
 }
 
 /** Your week-by-week change, as tiny diverging bars: when does this trade help? */
@@ -591,6 +744,51 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
+  const deepBtn = e.target.closest("button[data-deep]");
+  if (deepBtn) {
+    const key = deepBtn.dataset.deep;
+    const job = deepJobs.get(key);
+    if (job && job.status !== "error") return; // already running or shown
+    void startDeep(key);
+    return;
+  }
+
+  const rerun = e.target.closest("button[data-deep-fresh]");
+  if (rerun) {
+    void startDeep(rerun.dataset.deepFresh, true);
+    return;
+  }
+
+  const copyClaude = e.target.closest("button[data-copy-claude]");
+  if (copyClaude) {
+    const pitch = deepJobs.get(copyClaude.dataset.copyClaude)?.verdict?.pitch;
+    if (!pitch) return;
+    try {
+      await navigator.clipboard.writeText(pitch);
+      copyClaude.textContent = "Copied ✓";
+    } catch {
+      copyClaude.textContent = "Select the message above to copy";
+    }
+    setTimeout(() => (copyClaude.textContent = "Copy message"), 2000);
+    return;
+  }
+
+  const openCounter = e.target.closest("button[data-counter]");
+  if (openCounter) {
+    const counter = deepJobs.get(openCounter.dataset.counter)?.counter;
+    if (!counter) return;
+    // Pin the counter exactly: it becomes the proposal, judged by the engine.
+    query.partner = counter.partner.rosterId;
+    query.give = new Set(counter.give.map((p) => p.playerId));
+    query.get = new Set(counter.get.map((p) => p.playerId));
+    for (const id of query.give) query.keep.delete(id);
+    query.maxPerSide = Math.min(3, Math.max(query.maxPerSide, counter.give.length, counter.get.length));
+    renderOverview();
+    scrollTo({ top: 0, behavior: "smooth" });
+    scheduleSearch(0);
+    return;
+  }
+
   const explore = e.target.closest("button[data-explore]");
   if (explore) {
     const trade = findTrade(explore.dataset.explore);
@@ -619,9 +817,8 @@ function playerValue(id) {
 }
 
 function findTrade(key) {
-  if (!lastResult) return null;
-  if (lastResult.proposal?.key === key) return lastResult.proposal;
-  return lastResult.trades.find((t) => t.key === key) ?? null;
+  if (lastResult?.proposal?.key === key) return lastResult.proposal;
+  return lastResult?.trades.find((t) => t.key === key) ?? deepJobs.get(key)?.trade ?? null;
 }
 
 function togglePin(act, id) {

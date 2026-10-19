@@ -11,7 +11,7 @@
  */
 
 import { fixtureDraft, fixtureLeague, makeFixtureByes, makeFixturePlayers } from "../../fixtures/index.ts";
-import { fixtureTradeSource } from "../../fixtures/trade.ts";
+import { cannedReviewer, fixtureTradeSource } from "../../fixtures/trade.ts";
 import { TradeService } from "../server/trades.ts";
 import { projectionsFromSearchRank } from "../data/projections.ts";
 import { playerImages } from "../data/photos.ts";
@@ -222,7 +222,7 @@ const session = {
 } as unknown as DraftSession;
 
 const registry = new SubscriberRegistry();
-const app = createServer(session, registry, new TradeService(fixtureTradeSource()));
+const app = createServer(session, registry, new TradeService(fixtureTradeSource(), Date.now, cannedReviewer()));
 const server = Bun.serve({ port: config.port, fetch: app.fetch });
 
 console.log(`\n  Demo UI at http://localhost:${server.port}`);

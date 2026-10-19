@@ -52,6 +52,7 @@ export interface CallUsage {
 
 /** Per-million-token prices, from the current Anthropic pricing table. */
 const PRICING: Record<string, { input: number; output: number }> = {
+  "claude-opus-5-5": { input: 4, output: 20 },
   "claude-opus-5": { input: 5, output: 25 },
   "claude-opus-5:fast": { input: 10, output: 50 },
   "claude-haiku-4-5": { input: 1, output: 5 },
@@ -369,6 +370,8 @@ export function summariseUsage(
   usage: { input_tokens?: number | null; output_tokens?: number | null; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } | null | undefined,
   latencyMs: number,
   speed?: string | null,
+  /** 2x for the 1-hour cache this app mostly writes; 1.25x for the 5-minute default. */
+  cacheWriteMultiplier = 2,
 ): CallUsage {
   const inputTokens = usage?.input_tokens ?? 0;
   const cacheReadTokens = usage?.cache_read_input_tokens ?? 0;
@@ -379,11 +382,11 @@ export function summariseUsage(
   // which speed actually served each call.
   const key = speed === "fast" ? `${model}:fast` : model;
   const price = PRICING[key] ?? PRICING[model] ?? { input: 5, output: 25 };
-  // Cache reads bill at ~0.1x input; 1-hour cache writes at 2x.
+  // Cache reads bill at ~0.1x input; cache writes at 2x (1-hour) or 1.25x (5-minute).
   const estimatedCostUsd =
     (inputTokens * price.input +
       cacheReadTokens * price.input * 0.1 +
-      cacheWriteTokens * price.input * 2 +
+      cacheWriteTokens * price.input * cacheWriteMultiplier +
       outputTokens * price.output) /
     1_000_000;
 

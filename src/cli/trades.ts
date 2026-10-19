@@ -15,9 +15,12 @@
  *   bun run trades --league              also print every team's needs and surplus
  *   bun run trades --fixtures            offline fixture league, no network
  *   bun run trades --refresh             refetch projections, not just rosters
+ *   bun run trades --give=.. --get=.. --deep
+ *                                        Claude's second opinion on that exact trade
+ *                                        (Opus 5.5 + web search, ~$0.30-0.60)
  */
 
-import { TradeService, liveTradeSource, type TeamView, type TradeView } from "../server/trades.ts";
+import { TradeService, liveTradeSource, type DeepJob, type TeamView, type TradeView } from "../server/trades.ts";
 import { fixtureTradeSource } from "../../fixtures/trade.ts";
 import { ordinal } from "../trade/explain.ts";
 import type { TradeSort } from "../trade/search.ts";
@@ -96,7 +99,65 @@ async function main(): Promise<void> {
     console.log(`\n${BOLD}Your proposal${RESET}`);
     printTrade(result.proposal, 0);
   }
+
+  if (flag("deep") != null) {
+    if (!result.proposal) throw new Error("--deep needs one exact trade: pin both sides with --give and --get.");
+    await runDeep(service, result.proposal);
+    return;
+  }
+
   result.trades.forEach((t, i) => printTrade(t, i + 1));
+  console.log();
+}
+
+async function runDeep(service: TradeService, t: TradeView): Promise<void> {
+  console.log(`\n${BOLD}Deep analysis${RESET} ${DIM}Claude, with web search and the engine as tools${RESET}`);
+  let job: DeepJob = await service.startDeep({
+    partner: t.partner.rosterId,
+    give: t.give.map((p) => p.playerId),
+    get: t.get.map((p) => p.playerId),
+    fresh: flag("fresh") != null,
+  });
+  let shown = 0;
+  for (;;) {
+    for (const step of job.steps.slice(shown)) console.log(`  ${DIM}· ${step.text}${RESET}`);
+    shown = job.steps.length;
+    if (job.status !== "running") break;
+    await Bun.sleep(1000);
+    job = service.deepJob(job.id) ?? job;
+  }
+  if (job.status === "error") throw new Error(job.error ?? "Deep analysis failed.");
+  printVerdict(job);
+}
+
+function printVerdict(job: DeepJob): void {
+  const v = job.verdict!;
+  const color = v.decision === "accept" ? GREEN : v.decision === "counter" ? YELLOW : RED;
+  console.log(`\n  ${color}${BOLD}${v.decision.toUpperCase()}${RESET} ${DIM}(${v.confidence} confidence)${RESET}  ${BOLD}${v.headline}${RESET}`);
+  console.log(`\n  ${v.summary}`);
+  const list = (title: string, xs: string[]) => {
+    if (!xs.length) return;
+    console.log(`\n  ${BOLD}${title}${RESET}`);
+    for (const x of xs) console.log(`   - ${x}`);
+  };
+  list("For you", v.for_you);
+  list("Against", v.against);
+  list("News", v.news.map((n) => `${n.player}: ${n.note}`));
+  console.log(`\n  ${BOLD}Standings${RESET}  ${v.standings}`);
+  console.log(`  ${BOLD}Roster after${RESET}  ${v.roster_after}`);
+  if (v.counter_offer) {
+    console.log(`\n  ${BOLD}Counter-offer${RESET}  give ${v.counter_offer.give.join(" + ")} for ${v.counter_offer.get.join(" + ")}`);
+    console.log(`   ${v.counter_offer.why}`);
+    if (job.counter) printTrade(job.counter, 0);
+    else if (job.counterNote) console.log(`   ${RED}${job.counterNote}${RESET}`);
+  }
+  if (v.pitch) console.log(`\n  ${CYAN}"${v.pitch}"${RESET}`);
+  const secs = job.finishedAt ? Math.round((job.finishedAt - job.startedAt) / 1000) : 0;
+  console.log(
+    `\n  ${DIM}${job.reused ? "reused a run from earlier · " : ""}${job.model} · ${job.searches} searches · ` +
+      `${job.engineCalls} engine checks · $${(job.costUsd ?? 0).toFixed(3)} · ${secs}s${RESET}`,
+  );
+  for (const src of job.sources) console.log(`  ${DIM}${src.title} - ${src.url}${RESET}`);
   console.log();
 }
 

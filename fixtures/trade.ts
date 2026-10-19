@@ -13,6 +13,7 @@ import { makeFixtureByes, makeFixturePlayers } from "./index.ts";
 import { projectionsFromSearchRank } from "../src/data/projections.ts";
 import type { League, LeagueUser, PlayersIndex, Roster } from "../src/sleeper/types.ts";
 import type { TradeData, TradeDataSource } from "../src/server/trades.ts";
+import type { TradeReviewer, TradeVerdict } from "../src/llm/trade-review.ts";
 
 export const TRADE_FIXTURE_USER_ID = "434221843767881728";
 export const TRADE_FIXTURE_MY_ROSTER = 3;
@@ -149,3 +150,94 @@ export function fixtureTradeSource(fx: FixtureTradeLeague = makeFixtureTradeLeag
     rosters: async () => ({ rosters: fx.rosters, users: fx.users }),
   };
 }
+
+/**
+ * A stand-in for Claude, so the demo and the tests can drive deep analysis end
+ * to end without an API key. It walks the same path the real reviewer does - steps
+ * reported as it goes, the engine called through the same tools - and writes a
+ * verdict from what the engine says. It searches nothing, and says so.
+ */
+export function cannedReviewer(opts: { delayMs?: number; fail?: string } = {}): TradeReviewer {
+  const pause = () => new Promise((r) => setTimeout(r, opts.delayMs ?? 350));
+  return {
+    unavailable: () => null,
+    review: async ({ trade, engine, onStep }) => {
+      const step = (kind: "start" | "search" | "engine" | "think" | "write", text: string) =>
+        onStep?.({ kind, text, at: Date.now() });
+      step("start", "Reading the engine's briefing");
+      await pause();
+      for (const name of [...trade.give, ...trade.get]) {
+        step("search", `(demo) would search the web: ${name} news`);
+        await pause();
+      }
+      if (opts.fail) throw new Error(opts.fail);
+
+      step("engine", `Testing ${trade.give.join(" + ")} for ${trade.get.join(" + ")}`);
+      const asked = (await engine.evaluate(trade.give, trade.get)) as EngineCheck;
+      await pause();
+
+      let counter: TradeVerdict["counter_offer"] = null;
+      if (!asked.clears_bar) {
+        step("engine", `Searching the engine with ${trade.partner}`);
+        const found = (await engine.find({ give: [trade.give[0]!], team: trade.partner })) as { trades: EngineCheck[] };
+        const best = found.trades[0];
+        if (best) {
+          counter = {
+            give: best.you_give.map((p) => p.player),
+            get: best.you_get.map((p) => p.player),
+            why: "The engine's best version of this deal with the same partner.",
+          };
+        }
+      }
+      step("write", "Writing the verdict");
+      await pause();
+
+      const verdict: TradeVerdict = {
+        decision: asked.clears_bar ? "accept" : counter ? "counter" : "decline",
+        confidence: "medium",
+        headline: asked.clears_bar
+          ? `Demo verdict: the engine likes it (${signed(asked.your_change_per_week)}/wk for you).`
+          : counter
+            ? `Demo verdict: counter with ${counter.give.join(" + ")} for ${counter.get.join(" + ")}.`
+            : "Demo verdict: walk away - nothing nearby clears the bar.",
+        summary:
+          "This is the offline demo reviewer, not Claude: it read the engine's numbers and nothing else. " +
+          "Run the real server with ANTHROPIC_API_KEY set for news, standings and judgment.",
+        for_you: [`Your lineup ${signed(asked.your_change_per_week)} pts/wk by the engine.`],
+        against: asked.problems.length ? asked.problems : ["No news was checked - this is the demo."],
+        news: [],
+        standings: "The demo reviewer does not weigh the standings.",
+        roster_after: asked.you_cut.length ? `You would cut ${asked.you_cut.join(", ")}.` : "No cuts needed.",
+        counter_offer: counter,
+        pitch: asked.clears_bar || counter ? "Hey - would you be up for a trade? (demo message)" : null,
+      };
+      return {
+        verdict,
+        usage: {
+          model: "demo",
+          inputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 0,
+          estimatedCostUsd: 0,
+          latencyMs: 0,
+        },
+        servedBy: "demo reviewer (no API call)",
+        searches: 0,
+        engineCalls: counter ? 2 : 1,
+        sources: [],
+      };
+    },
+  };
+}
+
+interface EngineCheck {
+  you_give: Array<{ player: string }>;
+  you_get: Array<{ player: string }>;
+  your_change_per_week: number;
+  clears_bar: boolean;
+  problems: string[];
+  you_cut: string[];
+}
+
+const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "-" : ""}${Math.abs(n).toFixed(1)}`;
