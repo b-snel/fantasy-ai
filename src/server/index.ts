@@ -12,7 +12,7 @@ import { getDraft, getNflState, getUserDrafts } from "../sleeper/client.ts";
 import { listMockIds, parseDraftId, registerMock, unregisterMock } from "../data/mocks.ts";
 import type { Draft } from "../sleeper/types.ts";
 import type { DraftSession, LiveState } from "./state.ts";
-import type { TradeProvider, TradeRequest } from "./trades.ts";
+import { DeepUnavailableError, type TradeProvider, type TradeRequest } from "./trades.ts";
 import { TradeQueryError, type TradeSort } from "../trade/search.ts";
 
 /**
@@ -366,6 +366,36 @@ export function createServer(
       const status = err instanceof TradeQueryError ? 400 : 502;
       return c.json({ error: err instanceof Error ? err.message : String(err) }, status);
     }
+  });
+
+  /**
+   * Deep analysis: Claude's second opinion on one exact trade. Starts a job and
+   * answers 202 at once - a run takes one to two minutes - and the page polls it.
+   */
+  app.post("/api/trades/deep", async (c) => {
+    if (!trades?.startDeep) return c.json({ error: "Deep analysis is not available in this mode." }, 503);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const ids = (v: unknown) =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, 4) : [];
+    try {
+      const job = await trades.startDeep({
+        partner: typeof body.partner === "number" ? body.partner : null,
+        give: ids(body.give),
+        get: ids(body.get),
+        fresh: body.fresh === true,
+      });
+      return c.json(job, 202);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof TradeQueryError) return c.json({ error: message }, 400);
+      if (err instanceof DeepUnavailableError) return c.json({ error: message }, 503);
+      return c.json({ error: message }, 502);
+    }
+  });
+
+  app.get("/api/trades/deep/:id", (c) => {
+    const job = trades?.deepJob?.(c.req.param("id")) ?? null;
+    return job ? c.json(job) : c.json({ error: "No such analysis." }, 404);
   });
 
   app.post("/api/ask", async (c) => {

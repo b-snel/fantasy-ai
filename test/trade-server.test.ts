@@ -7,14 +7,20 @@
 
 import { test, expect, describe, afterAll } from "bun:test";
 import { createServer, SubscriberRegistry } from "../src/server/index.ts";
-import { TradeService, type TradeAnalysis, type TradeOverview } from "../src/server/trades.ts";
-import { fixtureTradeSource, TRADE_FIXTURE_MY_ROSTER } from "../fixtures/trade.ts";
+import { TradeService, type DeepJob, type TradeAnalysis, type TradeOverview } from "../src/server/trades.ts";
+import { cannedReviewer, fixtureTradeSource, makeFixtureTradeLeague, TRADE_FIXTURE_MY_ROSTER } from "../fixtures/trade.ts";
 import type { DraftSession } from "../src/server/state.ts";
 
 const session = { getState: () => ({}), subscribe: () => () => {} } as unknown as DraftSession;
 
 const registry = new SubscriberRegistry();
-const app = createServer(session, registry, new TradeService(fixtureTradeSource()));
+// The canned reviewer, always: with a real key in the environment the default one
+// would make live, billed model calls from the test suite.
+const app = createServer(
+  session,
+  registry,
+  new TradeService(fixtureTradeSource(), Date.now, cannedReviewer({ delayMs: 0 })),
+);
 const server = Bun.serve({ port: 0, fetch: app.fetch });
 const base = `http://localhost:${server.port}`;
 
@@ -93,5 +99,36 @@ describe("trade analyzer routes", () => {
   test("without a trade provider the routes say so instead of 404ing", async () => {
     const res = await fetch(`http://localhost:${bare.port}/api/trades`);
     expect(res.status).toBe(503);
+    const deep = await fetch(`http://localhost:${bare.port}/api/trades/deep`, { method: "POST", body: "{}" });
+    expect(deep.status).toBe(503);
+  });
+});
+
+describe("deep analysis routes", () => {
+  const fx = makeFixtureTradeLeague();
+  const mine = fx.rosters.find((r) => r.roster_id === TRADE_FIXTURE_MY_ROSTER)!.players!;
+  const theirs = fx.rosters.find((r) => r.roster_id === 8)!.players!;
+  const start = (body: unknown) =>
+    fetch(base + "/api/trades/deep", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("start is a 202 with a job, and the job can be polled to a verdict", async () => {
+    const res = await start({ give: [mine[0]], get: [theirs[0]] });
+    expect(res.status).toBe(202);
+    let job = (await res.json()) as DeepJob;
+    for (let i = 0; i < 200 && job.status === "running"; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      job = (await (await fetch(`${base}/api/trades/deep/${job.id}`)).json()) as DeepJob;
+    }
+    expect(job.status).toBe("done");
+    expect(job.verdict?.headline.length).toBeGreaterThan(0);
+  });
+
+  test("a trade without both sides is a 400, an unknown job a 404", async () => {
+    expect((await start({ give: [mine[0]] })).status).toBe(400);
+    expect((await fetch(`${base}/api/trades/deep/nope`)).status).toBe(404);
   });
 });

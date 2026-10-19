@@ -127,6 +127,26 @@ export const config = {
     resultLimit: 20,
     /** Rosters change through waivers; refetch them when older than this. */
     rosterMaxAgeMs: 60_000,
+    /**
+     * Deep analysis: a second opinion from Claude on one specific trade, with web
+     * search for the news the projections have not caught up with. On demand only
+     * - roughly $0.30-0.60 and one to two minutes a run (two live runs on
+     * 2026-10-21: $0.30/69s and $0.47/104s).
+     */
+    deep: {
+      model: "claude-opus-5-5",
+      effort: "high" as const,
+      maxTokens: 16_000,
+      /**
+       * Web searches per model turn - the API's max_uses is per request, so a run
+       * of several turns can search more than this. Each bills $0.01.
+       */
+      maxSearches: 8,
+      /** Model turns per run, a ceiling on a loop that wanders. */
+      maxIterations: 14,
+      /** A finished analysis of the same trade on the same rosters is reused this long. */
+      reuseMs: 30 * 60_000,
+    },
   },
 
   paths: {

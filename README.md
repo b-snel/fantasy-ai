@@ -53,7 +53,7 @@ doctor is what turns those assumptions into facts on the machine that matters.
 | `bun run demo` | The real UI against fixture data — no Sleeper, no API key |
 | `bun run mock` | Simulate a full 15-round draft in the terminal |
 | `bun run mock --llm` | Same, and call the model at your first three picks |
-| `bun test` | 282 tests, all offline |
+| `bun test` | 300 tests, all offline |
 | `bun run typecheck` | `tsc --noEmit` |
 
 `bun run demo --advance` steps a pick every few seconds if you want to watch the UI
@@ -102,7 +102,20 @@ bun run trades                     # best trades league-wide
 bun run trades --team="Bijan"      # one partner (team name, manager, or roster id)
 bun run trades --get="Breece Hall" # trades that land a specific player
 bun run trades --give="Kelce" --get="Tucker Kraft" --pitch   # judge one trade
+bun run trades --give="Kelce" --get="Tucker Kraft" --deep    # ...and ask Claude
 ```
+
+**Ask Claude** (on any trade card, or `--deep`) gets a second opinion on one exact
+trade from Claude Opus 5.5. It reads a deterministic briefing - standings, both
+rosters week by week, the engine's evaluation, the best free agents - searches the
+web for news the projections have not caught up with, and can run the engine
+itself through tools, so any counter-offer it suggests is scored by the engine
+rather than estimated. It answers accept, counter, or decline, with reasons both
+ways, the news it found with sources, and a message to send. On demand only:
+roughly $0.30-0.60 and one to two minutes a run, logged in the same spend ledger
+as everything else. A finished analysis of the same trade on unchanged rosters is
+reused for 30 minutes. `bun run demo` drives the same panel with a canned
+reviewer, no key needed.
 
 ## How it decides
 

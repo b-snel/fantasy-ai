@@ -241,6 +241,29 @@ pricing a spot at the second-best non-K/DEF free agent). `test/trade.test.ts`
 guards both. Assert structural properties in tests (both sides gain, the RB
 surplus goes out); the exact package the search picks is its own call.
 
+**Deep analysis (added 2026-10-21).** "Ask Claude" on a trade card (and
+`bun run trades --give=.. --get=.. --deep`) runs `src/llm/trade-review.ts`:
+Claude Opus 5.5 at high effort through the beta tool runner, with
+`web_search_20260209` and three engine tools (`evaluate_trade`, `find_trades`,
+`get_team`) that call the same `findTrades`/`evaluateTrade` the page does. The
+user message is `buildBriefing` (`src/trade/briefing.ts`) - deterministic, and
+shown to the user under "What Claude was told". The answer is a structured
+verdict (`VerdictSchema`); any counter-offer is re-scored by the engine before it
+is shown, so the numbers beside it are never the model's paraphrase. Runs are
+background jobs (`startDeep` -> 202, the page polls `/api/trades/deep/:id`)
+because one takes 1-2 minutes. Server-side refusal fallbacks are on
+(`fallbacks: "default"`).
+
+Verified live 2026-10-21 on St. Brown for Watson + Dobbins + McMillan: two runs,
+$0.30/69s and $0.47/104s, both "counter" with the same engine-checked variation.
+Two things learned: `max_uses` on web search is per request, not per run, so a
+multi-turn run can exceed `maxSearches` (12 searches against a cap of 8); and the
+model sometimes repeats an identical query, so the prompt asks it to cover each
+player once before going deeper. Tests never call the model: every
+`TradeService` in `test/` takes `cannedReviewer()` from `fixtures/trade.ts` -
+keep it that way, because with a key in `.env` the default reviewer makes billed
+calls.
+
 **Known simplifications.** Draft picks are not tradeable assets (this league has
 `pick_trading: 0`). K and DEF are left out of open-ended searches (streamable;
 pin them to include them). A player received from the other team's IR lands in
@@ -352,7 +375,7 @@ cache). Set the flag for the whole draft or not at all.
 | `bun run doctor` | Probe every endpoint and CDN path; write `data/capabilities.json` |
 | `bun run sync` | Cache players, league, projections, ADP, bye weeks (`--force` refetches) |
 | `bun run news` | One-time pre-draft news sweep (costs money) |
-| `bun run trades` | In-season trade analyzer in the terminal (`--league`, `--team=`, `--get=`, `--give=`, `--fixtures`) |
+| `bun run trades` | In-season trade analyzer in the terminal (`--league`, `--team=`, `--get=`, `--give=`, `--fixtures`; `--deep` asks Claude, costs ~$0.30-0.60) |
 | `bun start` | Live draft server at `localhost:5173` |
 | `bun run demo` | Real UI against fixtures — no Sleeper, no API key |
 | `bun run mock` | Simulate a full 15-round draft in the terminal (fixtures) |
