@@ -4,15 +4,17 @@
 
 import { config } from "../config.ts";
 import { DraftSession } from "../server/state.ts";
+import { TradeService } from "../server/trades.ts";
 import { serve } from "../server/index.ts";
 import { probeFastMode, totalSpendUsd, getUsageLog } from "../llm/recommend.ts";
 
 const session = new DraftSession();
 
-const { server, registry } = serve(session);
+const { server, registry } = serve(session, new TradeService());
 console.log(`\n  Draft assistant running at http://localhost:${server.port}`);
 console.log(`  Home (pick a draft or a mock): http://localhost:${server.port}/`);
 console.log(`  Draft room:                    http://localhost:${server.port}/draft`);
+console.log(`  Trade analyzer:                http://localhost:${server.port}/trades`);
 if (config.llm.fastMode) {
   console.log(`  FAST_MODE on - Opus fast mode, ~2.5x quicker cards at 2x price.`);
 }

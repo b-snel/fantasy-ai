@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trade Analyzer</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1216'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%233ddc84'%3E%E2%87%84%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="bar-left">
+        <a href="/" class="homelink">‹ Home</a>
+        <span class="pick">Trade Analyzer</span>
+      </div>
+      <div class="bar-mid"><span id="leagueline" class="muted">loading…</span></div>
+      <div class="bar-right">
+        <button id="reload" type="button" title="Refetch rosters and rest-of-season projections from Sleeper">
+          Refresh data
+        </button>
+      </div>
+    </header>
+
+    <div id="alerts" class="alerts"></div>
+
+    <main class="trades-main">
+      <section class="cards-col">
+        <section class="panel controls">
+          <div class="ctl-row">
+            <label class="ctl">
+              <span class="ctl-label">Trade with</span>
+              <select id="partner"><option value="">All teams</option></select>
+            </label>
+            <div class="ctl">
+              <span class="ctl-label">Up to</span>
+              <div class="seg" id="maxseg" role="group" aria-label="Players per side">
+                <button type="button" data-max="1">1</button>
+                <button type="button" data-max="2">2</button>
+                <button type="button" data-max="3">3</button>
+              </div>
+              <span class="ctl-label">per side</span>
+            </div>
+            <div class="ctl">
+              <span class="ctl-label">Sort</span>
+              <div class="seg" id="sortseg" role="group" aria-label="Sort trades by">
+                <button type="button" data-sort="expected" title="Your gain weighted by how likely they are to accept">Best bet</button>
+                <button type="button" data-sort="gain" title="Your lineup gain alone">Biggest gain</button>
+                <button type="button" data-sort="likely" title="Most likely to be accepted">Most likely</button>
+              </div>
+            </div>
+          </div>
+          <div id="pins" class="pins"></div>
+          <p class="muted hint">
+            Use <b>Offer</b> and <b>Keep</b> on your roster and <b>Want</b> on theirs to pin players. Pin both
+            sides to judge one exact trade.
+          </p>
+        </section>
+
+        <p id="searchline" class="boardread"></p>
+        <div id="proposal"></div>
+        <div id="results" class="cards"><p class="empty">Loading the league…</p></div>
+        <p id="meta" class="muted small"></p>
+      </section>
+
+      <aside class="side">
+        <section class="panel">
+          <h2 id="mytitle">Your team</h2>
+          <div id="mysummary" class="teamsum"></div>
+          <ul id="myroster" class="troster"></ul>
+        </section>
+
+        <section class="panel" id="theirpanel" hidden>
+          <h2 id="theirtitle">Their team</h2>
+          <div id="theirsummary" class="teamsum"></div>
+          <ul id="theirroster" class="troster"></ul>
+        </section>
+
+        <section class="panel">
+          <h2>
+            <span class="tip tip-l" data-tip="Each team's projected starting strength at each position for the rest of the season, ranked 1 (best) to last. Red is a weakness worth trading into; click a team to search it.">League needs</span>
+          </h2>
+          <table id="leaguetable" class="leaguetable"></table>
+        </section>
+
+        <section class="panel">
+          <h2>How this decides</h2>
+          <p class="muted small explain">
+            Every trade is scored on both rosters: the points each team's best lineup is projected to score
+            each week from now through the fantasy playoffs, with byes, injury returns, and waiver-wire
+            streaming included. A trade is shown only if it <b>helps your lineup</b>, <b>does not hurt
+            theirs</b>, and <b>looks fair on paper</b> by rest-of-season value, so they have a reason to say yes.
+          </p>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/trades.js"></script>
+  </body>
+</html>
