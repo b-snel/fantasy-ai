@@ -198,6 +198,57 @@ pick in seconds, so the model has no warm-up time between your picks:
 
 ---
 
+## Trade analyzer — added 2026-10-19
+
+In season the draft is over, so the useful question becomes "who should I trade
+with?". `/trades` (and `bun run trades`) answers it. Code lives in `src/trade/`
+(`value.ts` roster valuation, `search.ts` the search and the three bars,
+`explain.ts` reasons and the pitch), `src/data/ros.ts` (rest-of-season weekly
+projections) and `src/server/trades.ts` (the service; independent of the draft
+session, loads lazily, refreshes rosters when older than a minute).
+
+**How a trade is judged.** Value is the expected points of each roster's best
+legal lineup, week by week through the last fantasy-playoff week, with a
+waiver-streaming floor under every slot and bench depth priced as injury
+insurance. A trade is shown only if (1) your lineup gains at least
+`minGainPerWeek`, (2) theirs loses at most `maxPartnerLossPerWeek`, and (3) the
+market ratio - what they receive over what they send, on a perception model with
+a stud premium and a roster-spot charge per extra body - is at least
+`minMarketRatio`. All in `config.trade`. Results rank by your gain times a
+logistic acceptance heuristic (`acceptanceLikelihood`); the UI labels it as a
+rough read, not a probability, and it should stay labelled that way.
+
+**Data facts, verified live 2026-10-19** (`api.sleeper.com` weekly projections,
+Rotowire-sourced, refreshed weekly in season):
+
+- A **bye** is a row with `opponent` and `date` both null and near-empty stats.
+- An **injured** player keeps his game row (date, opponent) with near-zero stats;
+  IR players project zero until their expected return week, then normal points.
+  So injury timing is in the data - do not add a separate injury model.
+- The current week is partly played on most days. Rows with `date` before today
+  (America/New_York) are zeroed and the player recorded in `played`, so a game
+  already played is neither counted nor reported as an absence.
+- `data/ros.json` is keyed by window, date and scoring, and carries
+  `CACHE_VERSION` - bump it whenever the cached shape changes, or an old file is
+  half-read (this happened once: every player read as "returning from injury").
+
+**How to work on it safely.** Same lesson as the draft engine: run
+`bun run trades --league` against the live league and read the trades, not just
+the tests. Two bugs only showed up that way: junk throw-ins inflating the paper
+ratio (fixed by charging the receiver a roster spot), and that charge priced at a
+league-starter level, which made every 2-for-1 look like a fleecing (fixed by
+pricing a spot at the second-best non-K/DEF free agent). `test/trade.test.ts`
+guards both. Assert structural properties in tests (both sides gain, the RB
+surplus goes out); the exact package the search picks is its own call.
+
+**Known simplifications.** Draft picks are not tradeable assets (this league has
+`pick_trading: 0`). K and DEF are left out of open-ended searches (streamable;
+pin them to include them). A player received from the other team's IR lands in
+your IR if there is room, without checking his designation. The acceptance
+heuristic is uncalibrated - it orders results, nothing more.
+
+---
+
 ## How to work on this safely
 
 **Run the simulation and read the output.** Six roster-construction bugs were found
@@ -301,6 +352,7 @@ cache). Set the flag for the whole draft or not at all.
 | `bun run doctor` | Probe every endpoint and CDN path; write `data/capabilities.json` |
 | `bun run sync` | Cache players, league, projections, ADP, bye weeks (`--force` refetches) |
 | `bun run news` | One-time pre-draft news sweep (costs money) |
+| `bun run trades` | In-season trade analyzer in the terminal (`--league`, `--team=`, `--get=`, `--give=`, `--fixtures`) |
 | `bun start` | Live draft server at `localhost:5173` |
 | `bun run demo` | Real UI against fixtures — no Sleeper, no API key |
 | `bun run mock` | Simulate a full 15-round draft in the terminal (fixtures) |

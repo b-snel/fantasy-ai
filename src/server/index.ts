@@ -12,6 +12,8 @@ import { getDraft, getNflState, getUserDrafts } from "../sleeper/client.ts";
 import { listMockIds, parseDraftId, registerMock, unregisterMock } from "../data/mocks.ts";
 import type { Draft } from "../sleeper/types.ts";
 import type { DraftSession, LiveState } from "./state.ts";
+import type { TradeProvider, TradeRequest } from "./trades.ts";
+import { TradeQueryError, type TradeSort } from "../trade/search.ts";
 
 /**
  * How long a stream may go without a client heartbeat before it is reaped, and how
@@ -122,7 +124,11 @@ export class SubscriberRegistry {
   }
 }
 
-export function createServer(session: DraftSession, registry = new SubscriberRegistry()) {
+export function createServer(
+  session: DraftSession,
+  registry = new SubscriberRegistry(),
+  trades: TradeProvider | null = null,
+) {
   const app = new Hono();
 
   // no-store: a plain reload must always pick up the current client code -
@@ -143,6 +149,16 @@ export function createServer(session: DraftSession, registry = new SubscriberReg
     "/home.js",
     () =>
       new Response(Bun.file("web/home.js"), {
+        headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" },
+      }),
+  );
+
+  app.get("/trades", async (c) => c.html(await Bun.file("web/trades.html").text()));
+
+  app.get(
+    "/trades.js",
+    () =>
+      new Response(Bun.file("web/trades.js"), {
         headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" },
       }),
   );
@@ -315,6 +331,43 @@ export function createServer(session: DraftSession, registry = new SubscriberReg
     return c.json({ ok: true });
   });
 
+  /**
+   * The trade analyzer: league overview (rosters, values, needs) and the search.
+   * Both are pure engine work over cached data - no model calls, no spend.
+   */
+  app.get("/api/trades", async (c) => {
+    if (!trades) return c.json({ error: "The trade analyzer is not available in this mode." }, 503);
+    try {
+      return c.json(await trades.overview({ refresh: c.req.query("refresh") === "1" }));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 502);
+    }
+  });
+
+  app.post("/api/trades/analyze", async (c) => {
+    if (!trades) return c.json({ error: "The trade analyzer is not available in this mode." }, 503);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const ids = (v: unknown) =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, 8) : [];
+    const sort = typeof body.sort === "string" && ["expected", "gain", "likely"].includes(body.sort)
+      ? (body.sort as TradeSort)
+      : undefined;
+    const req: TradeRequest = {
+      partner: typeof body.partner === "number" ? body.partner : null,
+      give: ids(body.give),
+      get: ids(body.get),
+      keep: ids(body.keep),
+      maxPerSide: typeof body.maxPerSide === "number" ? body.maxPerSide : undefined,
+      sort,
+    };
+    try {
+      return c.json(await trades.analyze(req));
+    } catch (err) {
+      const status = err instanceof TradeQueryError ? 400 : 502;
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, status);
+    }
+  });
+
   app.post("/api/ask", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { question?: unknown };
     const question = typeof body.question === "string" ? body.question : "";
@@ -331,9 +384,9 @@ export function createServer(session: DraftSession, registry = new SubscriberReg
   return app;
 }
 
-export function serve(session: DraftSession) {
+export function serve(session: DraftSession, trades: TradeProvider | null = null) {
   const registry = new SubscriberRegistry();
-  const app = createServer(session, registry);
+  const app = createServer(session, registry, trades);
   const server = Bun.serve({
     port: config.port,
     fetch: app.fetch,

@@ -48,11 +48,12 @@ doctor is what turns those assumptions into facts on the machine that matters.
 | `bun run doctor` | Probe every endpoint and CDN path; write `data/capabilities.json` |
 | `bun run sync` | Cache players, league, projections, ADP, bye weeks |
 | `bun run news` | One-time pre-draft news sweep over the top ~150 players |
+| `bun run trades` | In-season trade analyzer in the terminal (the web page is `/trades`) |
 | `bun start` | The live draft server at `localhost:5173` |
 | `bun run demo` | The real UI against fixture data — no Sleeper, no API key |
 | `bun run mock` | Simulate a full 15-round draft in the terminal |
 | `bun run mock --llm` | Same, and call the model at your first three picks |
-| `bun test` | 171 tests, all offline |
+| `bun test` | 282 tests, all offline |
 | `bun run typecheck` | `tsc --noEmit` |
 
 `bun run demo --advance` steps a pick every few seconds if you want to watch the UI
@@ -73,6 +74,35 @@ tool loop is actually for. It is slower and pricier per answer, which is why it 
 behind a button rather than firing on its own.
 
 ---
+
+### The trade analyzer
+
+Once the season starts, `localhost:5173/trades` (also linked from the home page)
+finds trades with other teams in the league. Three ways in:
+
+- **League-wide** - the best trades available with anyone.
+- **One team** - pick a partner, from the dropdown or the league-needs table.
+- **Pinned players** - mark your players **Offer** (must be in it) or **Keep**
+  (never), and theirs **Want**. Pin both sides to judge one exact trade; it is
+  evaluated and explained whether or not it passes.
+
+A trade is shown only if it clears three bars at once: it **improves your
+lineup**, it **does not make theirs worse**, and it **looks fair on paper** - so
+the other manager has a reason to say yes. Each result says why it works for you,
+why they would accept, and comes with a message you can paste into Sleeper.
+
+The unit of value is the roster, not the player: the points each team's best
+legal lineup is projected to score, week by week, from now through the fantasy
+playoffs. That is what makes win-win trades findable - your fourth running back
+can be their starter - and it means byes, injury returns, and waiver-wire
+streaming are in the numbers rather than bolted on. No model calls, no spend.
+
+```sh
+bun run trades                     # best trades league-wide
+bun run trades --team="Bijan"      # one partner (team name, manager, or roster id)
+bun run trades --get="Breece Hall" # trades that land a specific player
+bun run trades --give="Kelce" --get="Tucker Kraft" --pitch   # judge one trade
+```
 
 ## How it decides
 
