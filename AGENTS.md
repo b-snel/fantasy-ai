@@ -224,6 +224,8 @@ Rotowire-sourced, refreshed weekly in season):
 - A **bye** is a row with `opponent` and `date` both null and near-empty stats.
 - An **injured** player keeps his game row (date, opponent) with near-zero stats;
   IR players project zero until their expected return week, then normal points.
+  (Mostly: some IR players carry token 2-4 point projections every week - Tank
+  Dell, live 2026-10-21 - so "back" means half his healthy level; see `returnWeek`.)
   So injury timing is in the data - do not add a separate injury model.
 - The current week is partly played on most days. Rows with `date` before today
   (America/New_York) are zeroed and the player recorded in `played`, so a game
@@ -246,6 +248,124 @@ surplus goes out); the exact package the search picks is its own call.
 pin them to include them). A player received from the other team's IR lands in
 your IR if there is room, without checking his designation. The acceptance
 heuristic is uncalibrated - it orders results, nothing more.
+
+---
+
+## Waiver analyzer — added 2026-10-21
+
+The weekly question is "who do I pick up, and who do I cut?". `/waivers` (and
+`bun run waivers`) answers it with an ordered plan: lineup fix, IR housekeeping,
+adds to make now, claims (drop, bid, fallbacks), streams that can wait for the next
+run, IR returns that force a cut. Code: `src/waiver/` (one module per concern),
+`src/data/{activity,usage}.ts`, `getTeamSchedule` in `src/data/schedule.ts`, and
+`src/server/waivers.ts` (the trade analyzer's data source plus those; same lazy
+load and one-minute roster refresh as TradeService).
+
+**How a move is judged.** Add a free agent, drop one of yours (no drop when a spot
+is open, or when an injured active player projected out this week can take a free
+reserve slot - an IR slot does not score). Value is the change in your best
+lineup's expected points each week. The trade floor - free streaming under every
+starter - is circular when streaming is the advice: live, it credited your 0-6
+roster with 5.4 pts/wk of pickups it had not made, capped the best move at
++0.43/wk (under the trade analyzer's 0.5 bar), and hid that its only QB and only
+DEF share the week-8 bye. Depth 3/4 floors were measured and do not fix it (rank
+correlation 0.97-0.98). So `noFloorWeeks` (2): this week and next have no floor
+under starters - that is where the decisions are - and later weeks keep it,
+because by then you can stream like everyone else. (Floorless everywhere was
+tried first: the review found it told every contender to stockpile defenses in
+October for a point in the playoffs.) The floor stays under the injury term in
+every week, and each candidate is valued on a floor with him removed
+(`floorWithout`). This week's locked starters hold their slots (`WeekZero`): once
+his game is over a starter projects 0 for the week, and without that his slot
+read as a hole any free agent filled - every Thursday through Monday. The
+season simulation keeps the normal floor - rivals do stream. Search is
+exhaustive; the plan is greedy and re-searches after each step, so nobody is cut
+twice. Bench lock is checked when the claim processes (an instant add now, a
+fresh-drop claim ~23h out, nothing for a next-run claim). A claim that processes
+after his game counts from next week. A move with `streamShare` of its positive
+weekly gain in one week is a stream (judged on plain weekly gains, so the label
+does not change with the horizon); it can wait for the next run only if what
+waiting gives up - this week's weighted value - is under a quarter of it. A
+next-week stream becomes a "next run" step with its own cut; further out stays
+in the move list. Same-week, same-position streams fold into one card, and every
+bid is priced against the same peers (same position, same week). Thresholds in
+`config.waiver`.
+
+**Week weights** (`odds.ts`): leverage = slope of P(win that game) at the projected
+margin x what a win is worth (title equity of one more win, pooled over simulated
+seasons with analytic bracket equity, plus `winValue` per regular-season win so an
+eliminated team still values its next game). Weekly team score sd ~21-22 matched
+weeks 1-6. The first attempt - forcing each game's result and counting title
+flips - was Monte Carlo noise for a ~1%-odds team and could go negative; do not
+go back to it. The `week`/`season`/`playoffs` horizons replace these weights.
+
+**Data facts, verified live 2026-10-21:**
+
+- FAAB (`waiver_type` 2, $100), `waiver_day_of_week` 2 = Wednesday; every run
+  09-16 .. 10-21 processed at ~03:08 ET. Drops clear ~23h later (`waiver_clear_days`
+  1). Off-cycle clears share a timestamp only among their few bidders (3, vs 21-39
+  in weekly runs) - that is how `waiverCalendar` tells them apart. The next run is
+  stepped in New York clock time; no run after a daylight-saving change has been
+  observed yet, so 03:08 EST on 11-04 is an assumption.
+- Players are instant free agents from the run until kickoff, then locked until the
+  next run; `bench_lock` means a player whose game started cannot be dropped. The
+  schedule has date and status but no kickoff time, so locks are estimated (Thu
+  20:15, Sun 13:00, Mon 19:15 ET; a Thursday with several games - Thanksgiving -
+  12:30 for all of them; erring early; international games not flagged).
+- `/matchups` returns future weeks, but playoff weeks carry fake repeats of the
+  regular-season rotation, so only weeks before `playoff_week_start` are used.
+- The stats endpoint gives per-game snaps/targets/carries; its `pts_*` fields are
+  not league scoring, so `usage.ts` rescores every line.
+- FAAB clearing price (2nd-highest bid per auction) rises steeply with bidders: ~$2
+  with two, $5 three, $5 four, $23 five-plus here (defaults $2/$3/$7/$18 when the
+  history is thin). Position matters: median winning bid QB $0, RB/WR $11. Lineup
+  gain does not predict who bids (11 of 12 players claimed in one run had no rival
+  gaining from them), so demand comes from trending adds, fresh drops and rivals'
+  holes. 41 of 120 failed claims failed on roster size - hence explicit drops, and
+  fallbacks that share the drop and never bid more.
+- Measured and left out: defense-vs-position (6-week reliability ~0 RB, ~0.1 WR,
+  0.35-0.56 QB/TE/DEF, already inside the projections). Usage and trending are
+  context only: an opportunity jump moves next week's projection, nothing beyond.
+
+**The news check** is the only paid step: Opus 5.5 + `web_search_20260209`,
+server-side fallbacks, `maxRetries: 0`, 150s timeout, `pause_turn` continuations,
+search fees ($0.01 each) counted into `recordUsage`, cached per player per Eastern
+day in `data/waiver-news.json`. A background job (POST `/api/waivers/news` starts
+it, GET polls), so it can never outlive Bun's `idleTimeout`. It annotates; it never
+re-ranks or hides a move. It does not reuse `src/data/news.ts` on purpose: that
+ignores search fees and `pause_turn` and writes the file the draft board reads.
+First live run (2026-10-21, $0.28, 50s, 8 searches billed): search failed after
+one query and the model filled the notes with "couldn't check" - which got cached
+as news. Server-tool errors arrive as HTTP 200 with an error object in the tool
+result, so `news.ts` now counts them and, when failed searches outnumber
+successful ones, throws with the error codes and caches nothing. Why search
+failed that time is not known; the next failure will say.
+
+**How to work on it safely.** Same lesson: run `bun run waivers` against the live
+league and read the plan - the floor problem above was found on live output, and
+the defense hoarding only on a contender's roster, so read another team's plan
+too (point a TradeDataSource wrapper's `userId` at another owner). Also run it on
+a game day: the locked-starter bug only exists between Thursday and Monday. A
+long-running server reloads projections on a new Eastern day, and a Sleeper blip
+on refresh keeps the last good schedule and transactions rather than empty ones.
+Every POST under `/api/*` refuses cross-site requests, so another page cannot
+start a paid check from your browser (the server still binds every interface).
+`bun run demo` serves `/waivers` on `fixtures/waiver.ts` with no news provider.
+Assert structure in tests (a bye hole found, nobody cut twice, a later-week stream
+waits), not which free agent tops the list. The trade path must stay identical
+(`floorStarts` undefined). Never write `data/news.json` or `data/schedule.json`
+from here; the new caches (`data/stats.json`, `data/team-schedule.json`,
+`data/waiver-news.json`) carry `CACHE_VERSION` keys - bump on shape change.
+
+**Known simplifications.** A healthy player in IR raises an alert worded "Sleeper
+may block" (not verified that it does). A returning IR player gets a "you will need
+to cut" step, but the valuation does not charge that cut. No stash/handcuff list:
+measured near-worthless for a near-eliminated team, and the naive formula
+overstated it 1.5-15x - a real one must price the contingency through
+`rosterValue`. Ranking maximises expected points, not P(win); a long-shot team
+might prefer variance. Claim fallbacks are listed, but Sleeper's league-wide
+processing order is not simulated. Bids are a heuristic starting point. Rivals' IR
+and roster blocks are not modelled.
 
 ---
 
@@ -328,6 +448,7 @@ any other way, and it is remembered. Opening a draft switches the server's
 single session in place - SSE subscribers stay connected and simply start
 receiving the new draft (`DraftSession.switchTo`, epoch-guarded against
 in-flight callbacks for the old draft). The draft room lives at `/draft`.
+The in-season pages, `/trades` and `/waivers`, are independent of the draft session.
 `SLEEPER_DRAFT_ID=<id> bun start` still works and registers the mock. Expect
 ~$0.50-3 of model spend for a full CPU mock.
 
@@ -353,6 +474,8 @@ cache). Set the flag for the whole draft or not at all.
 | `bun run sync` | Cache players, league, projections, ADP, bye weeks (`--force` refetches) |
 | `bun run news` | One-time pre-draft news sweep (costs money) |
 | `bun run trades` | In-season trade analyzer in the terminal (`--league`, `--team=`, `--get=`, `--give=`, `--fixtures`) |
+| `bun run waivers` | In-season waiver analyzer in the terminal (`--fixtures`, `--refresh`, `--horizon=`, `--pos=`, `--keep=`, `--add=`, `--drop=`, `--league`, `--verbose`) - free |
+| `bun run waivers --news` | Same, plus the paid news check over the shortlist - the only flag that costs money (free when today's notes are cached; not with `--fixtures`) |
 | `bun start` | Live draft server at `localhost:5173` |
 | `bun run demo` | Real UI against fixtures — no Sleeper, no API key |
 | `bun run mock` | Simulate a full 15-round draft in the terminal (fixtures) |

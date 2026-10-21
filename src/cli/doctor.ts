@@ -15,9 +15,11 @@ import {
   getJson,
   getLeague,
   getLeagueUsers,
+  getMatchups,
   getNflState,
   getRosters,
   getTradedPicks,
+  getTransactions,
   getTrending,
   resolveDraft,
 } from "../sleeper/client.ts";
@@ -168,6 +170,46 @@ async function main(): Promise<void> {
   const trendingOk = Array.isArray(trending) && trending.length > 0;
   record("GET /players/nfl/trending/add", trendingOk ? "ok" : "warn", `${trending?.length ?? 0} rows`);
 
+  /*
+   * In season: what the waiver analyzer reads. Transactions date the weekly run
+   * and price FAAB; a future week's matchups are the schedule the playoff odds
+   * simulate. Neither matters for a draft, so both only warn. Before the regular
+   * season there is no future fantasy week to pair, so that probe is skipped
+   * rather than left to warn on every pre-draft run.
+   */
+  const inSeason = state?.season_type === "regular";
+  const nflWeek = Math.max(1, state?.week ?? 1);
+  const transactions = await getTransactions(config.leagueId, nflWeek).catch(() => null);
+  record(
+    "GET /league/{id}/transactions/{week}",
+    Array.isArray(transactions) ? "ok" : "warn",
+    Array.isArray(transactions)
+      ? `week ${nflWeek}: ${transactions.length} rows, ${transactions.filter((t) => t.type === "waiver").length} waiver claims`
+      : "unreachable - waiver bids fall back to default prices and the run time is guessed",
+  );
+  if (!Array.isArray(transactions)) notes.push("league transactions unreachable - the waiver page cannot price FAAB from this league's history");
+
+  if (inSeason) {
+    const lastRegular = (league.settings?.playoff_week_start ?? 15) - 1;
+    const next = nflWeek + 1;
+    const matchups = await getMatchups(config.leagueId, next).catch(() => null);
+    const paired = Array.isArray(matchups) ? matchups.filter((m) => m.matchup_id != null).length : 0;
+    record(
+      "GET /league/{id}/matchups/{week+1}",
+      paired || next > lastRegular ? "ok" : "warn",
+      !Array.isArray(matchups)
+        ? "unreachable - playoff odds will not know who plays whom"
+        : next > lastRegular
+          ? `week ${next} is past the regular season - pairings not needed`
+          : `week ${next}: ${paired} of ${matchups.length} rosters paired${paired ? "" : " - future matchup_ids missing, playoff odds lose the schedule"}`,
+    );
+    if (Array.isArray(matchups) && !paired && next <= lastRegular) {
+      notes.push(`matchups for week ${next} carry no matchup_id - the waiver page's playoff odds cannot see the remaining schedule`);
+    }
+  } else {
+    console.log(`  ${DIM}- ${"GET /league/{id}/matchups/{week+1}".padEnd(38)} skipped: not the regular season (${state?.season_type ?? "unknown"})${RESET}`);
+  }
+
   console.log(`\n${BOLD}Player dump${RESET}`);
   const playersOk = await probeJson("GET /players/nfl (~5MB)", `${config.sleeper.apiBase}/players/nfl`);
 
@@ -252,6 +294,31 @@ async function main(): Promise<void> {
     "schedule/nfl/regular/{season}",
     `${config.sleeper.dataBase}/schedule/nfl/regular/${season}`,
   );
+
+  // Last week's box scores: the waiver page's usage lines (snap share, looks).
+  // Context only - nothing ranks on them - so a miss is a warning.
+  const statsWeek = (state?.week ?? 0) - 1;
+  if (inSeason && statsWeek >= 1) {
+    try {
+      const rows = await getJson<Array<{ stats?: Record<string, number> }>>(
+        `${config.sleeper.dataBase}/stats/nfl/${season}/${statsWeek}?season_type=regular&position[]=RB`,
+        { retries: 0, timeoutMs: 20_000 },
+      );
+      const withSnaps = (rows ?? []).filter((r) => typeof r.stats?.off_snp === "number").length;
+      record(
+        "stats/nfl/{season}/{week}",
+        withSnaps ? "ok" : "warn",
+        rows
+          ? `week ${statsWeek}: ${rows.length} RB rows, ${withSnaps} with off_snp${withSnaps ? "" : " - usage lines lose snap share"}`
+          : "empty or 404 - waiver usage lines will be blank",
+      );
+      if (!withSnaps) notes.push(`week ${statsWeek} stat lines carry no off_snp - waiver usage lines will show points only`);
+    } catch (err) {
+      record("stats/nfl/{season}/{week}", "warn", err instanceof Error ? err.message : String(err));
+    }
+  } else {
+    console.log(`  ${DIM}- ${"stats/nfl/{season}/{week}".padEnd(38)} skipped: no completed regular-season week yet${RESET}`);
+  }
 
   // -- CDN images -----------------------------------------------------------
   console.log(`\n${BOLD}Images (sleepercdn.com)${RESET}`);
