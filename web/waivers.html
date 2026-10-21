@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Waiver Wire</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1216'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%23ffb020'%3E%2B%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="bar-left">
+        <a href="/" class="homelink">‹ Home</a>
+        <span class="pick">Waiver Wire</span>
+      </div>
+      <div class="bar-mid"><span id="leagueline" class="muted">loading…</span></div>
+      <div class="bar-right">
+        <button id="reload" type="button" title="Refetch rosters, projections, transactions and the schedule from Sleeper">
+          Refresh data
+        </button>
+      </div>
+    </header>
+
+    <div id="alerts" class="alerts"></div>
+
+    <main class="trades-main waivers-main">
+      <section class="cards-col">
+        <section class="panel controls">
+          <div class="ctl-row">
+            <div class="ctl">
+              <span class="ctl-label">Value</span>
+              <div class="seg" id="horizonseg" role="group" aria-label="Which weeks count">
+                <button
+                  type="button"
+                  data-horizon="auto"
+                  title="Every remaining week, weighted by how much a point that week moves your title odds (from a simulation of the rest of the season)"
+                >
+                  Auto
+                </button>
+                <button type="button" data-horizon="week" title="Only this week counts: the best one-week pickup">
+                  This week
+                </button>
+                <button type="button" data-horizon="season" title="Every remaining week counts the same, playoffs included">
+                  Season
+                </button>
+                <button type="button" data-horizon="playoffs" title="Only the fantasy playoff weeks count: stash for the run">
+                  Playoffs
+                </button>
+              </div>
+            </div>
+            <div class="ctl">
+              <span class="ctl-label">Positions</span>
+              <div class="seg" id="posseg" role="group" aria-label="Positions to search"></div>
+            </div>
+          </div>
+          <div id="pins" class="pins"></div>
+          <div class="newsrow">
+            <span id="newswrap"><button id="newsbtn" type="button">Check the news</button></span>
+            <span id="newsline" class="muted small"></span>
+          </div>
+          <p class="muted hint">
+            <b>Keep</b> a player to protect him from every cut, or <b>Cut</b> one to see the best add that replaces
+            him. <b>Pin</b> a free agent to judge him against every drop.
+          </p>
+        </section>
+
+        <section id="newsout" class="panel newsout" hidden></section>
+
+        <p id="searchline" class="boardread"></p>
+
+        <div id="analysis" class="analysis">
+          <section class="wsec" id="plansec">
+            <h2 class="sec-h">
+              <span class="tip tip-l" data-tip="What to do, in the order to do it: lineup fixes first, then adds you can make now, then claims, then next week's holes. No step cuts a player twice.">Do this</span>
+            </h2>
+            <ol id="plan" class="plan"><li class="empty">Loading…</li></ol>
+          </section>
+
+          <section class="wsec" id="streamsec">
+            <h2 class="sec-h">
+              <span class="tip tip-l" data-tip="Slots you cannot fill well this week and next (byes, injuries, thin spots), and the best one-week pickups for them.">Holes &amp; streams</span>
+            </h2>
+            <div id="streams" class="streams"></div>
+          </section>
+
+          <section class="wsec">
+            <h2 class="sec-h">
+              <span class="tip tip-l" data-tip="Every add that improves your lineup by enough to bother, best first, each with the cheapest drop. Pin one to see all of its drops.">All moves</span>
+            </h2>
+            <div id="proposal"></div>
+            <div id="results" class="cards"><p class="empty">Loading the league…</p></div>
+          </section>
+        </div>
+        <p id="meta" class="muted small"></p>
+      </section>
+
+      <aside class="side">
+        <section class="panel">
+          <h2>Your team</h2>
+          <div id="mysummary" class="teamsum"></div>
+          <ul id="myroster" class="troster wroster"></ul>
+        </section>
+
+        <section class="panel">
+          <h2>
+            <span class="tip tip-l" data-tip="How much one projected point is worth each week, relative to an average week. Taller bars are weeks where a point moves your title odds more. Gold bars are the fantasy playoffs.">Which weeks matter</span>
+          </h2>
+          <div id="leverage" class="levchart"></div>
+          <p id="levnote" class="muted small explain"></p>
+        </section>
+
+        <section class="panel">
+          <h2>League</h2>
+          <table id="leaguetable" class="leaguetable wleague"></table>
+        </section>
+
+        <section class="panel" id="marketpanel">
+          <h2>
+            <span class="tip tip-l" data-tip="What claims have actually cost in this league this season. The clearing price is the second-highest bid - what it took to win.">FAAB market</span>
+          </h2>
+          <div id="market" class="market"></div>
+        </section>
+
+        <section class="panel">
+          <h2>How this decides</h2>
+          <p class="muted small explain">
+            Each add is scored by what it does to your <b>best legal lineup</b>, week by week through the fantasy
+            playoffs. The baseline is your roster with no further moves - <b>no free streaming</b> is assumed - so an
+            empty slot scores nothing and a pickup that covers a bye gets full credit for that week.
+          </p>
+          <p class="muted small explain">
+            Weeks are not worth the same. <b>Auto</b> weights each one by how much a point that week moves your
+            title odds, from a <b>simulation of the rest of the season</b> on the league's real schedule.
+          </p>
+          <p class="muted small explain">
+            A <b>free agent</b> can be added now; a player <b>on waivers</b> needs a claim that processes at the next
+            run; a player whose game has started is <b>locked</b> until then. Suggested bids come from <b>this
+            league's own clearing prices</b> and how many teams likely want him - a starting point, not a solver.
+          </p>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/waivers.js"></script>
+  </body>
+</html>

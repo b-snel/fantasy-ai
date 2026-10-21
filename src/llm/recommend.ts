@@ -54,6 +54,7 @@ export interface CallUsage {
 const PRICING: Record<string, { input: number; output: number }> = {
   "claude-opus-5": { input: 5, output: 25 },
   "claude-opus-5:fast": { input: 10, output: 50 },
+  "claude-opus-5-5": { input: 4, output: 20 },
   "claude-haiku-4-5": { input: 1, output: 5 },
   "claude-sonnet-5": { input: 2, output: 10 },
 };

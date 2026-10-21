@@ -89,6 +89,16 @@ export interface TradeUniverse {
    */
   rosterSpotValue: number;
   injuryRate: number;
+  /**
+   * Leading weeks of the window in which a weak or empty starting slot is NOT
+   * filled from the waiver floor (default 0: every week streams). Trades want
+   * the floor everywhere - both sides could stream. The waiver analyzer turns it
+   * off for this week and next: streaming then is the move it is recommending,
+   * so its baseline is what the roster fields without one. The floor still backs
+   * the injury-substitute term either way - an unplanned absence is covered from
+   * the wire.
+   */
+  noFloorWeeks?: number;
 }
 
 export interface UniverseInput {
@@ -288,6 +298,7 @@ function evaluate(u: TradeUniverse, playerIds: readonly string[], detail: Roster
   }
 
   const q = u.injuryRate;
+  const noFloorWeeks = u.noFloorWeeks ?? 0;
   const slots = u.slots;
   const n = roster.length;
   const order = new Array<number>(n);
@@ -297,6 +308,7 @@ function evaluate(u: TradeUniverse, playerIds: readonly string[], detail: Roster
 
   for (let w = 0; w < u.weeks.length; w++) {
     const floor = u.waiverFloor[w] ?? {};
+    const floorStarts = w >= noFloorWeeks;
 
     // Best-first for this week. Insertion sort: rosters are ~16 players.
     for (let i = 0; i < n; i++) {
@@ -344,7 +356,7 @@ function evaluate(u: TradeUniverse, playerIds: readonly string[], detail: Roster
       const a = assigned[s]!;
       const starterPts = a >= 0 ? (roster[a]!.weekly[w] ?? 0) : 0;
       // Worse than the waiver wire: you would stream, and he sits.
-      const streamed = starterPts < slotFloor;
+      const streamed = floorStarts && starterPts < slotFloor;
       if (streamed && a >= 0) used[a] = 0;
       const start = streamed ? slotFloor : starterPts;
 
@@ -359,7 +371,9 @@ function evaluate(u: TradeUniverse, playerIds: readonly string[], detail: Roster
         break; // best-first, so the first eligible one is the best
       }
 
-      const expected = (1 - q) * start + q * sub;
+      // With nobody to start there is nobody to get hurt: an empty slot is worth
+      // nothing until a move fills it (it only arises in a no-floor week).
+      const expected = !floorStarts && a < 0 ? 0 : (1 - q) * start + q * sub;
       weekTotal += expected;
 
       if (detail) {
