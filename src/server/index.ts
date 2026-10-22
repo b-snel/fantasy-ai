@@ -14,6 +14,8 @@ import type { Draft } from "../sleeper/types.ts";
 import type { DraftSession, LiveState } from "./state.ts";
 import { DeepUnavailableError, type TradeProvider, type TradeRequest } from "./trades.ts";
 import { TradeQueryError, type TradeSort } from "../trade/search.ts";
+import type { Horizon, WaiverProvider, WaiverRequest } from "./waivers.ts";
+import { WaiverQueryError } from "../waiver/search.ts";
 
 /**
  * How long a stream may go without a client heartbeat before it is reaped, and how
@@ -128,6 +130,7 @@ export function createServer(
   session: DraftSession,
   registry = new SubscriberRegistry(),
   trades: TradeProvider | null = null,
+  waivers: WaiverProvider | null = null,
 ) {
   const app = new Hono();
 
@@ -163,6 +166,16 @@ export function createServer(
       }),
   );
 
+  app.get("/waivers", async (c) => c.html(await Bun.file("web/waivers.html").text()));
+
+  app.get(
+    "/waivers.js",
+    () =>
+      new Response(Bun.file("web/waivers.js"), {
+        headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" },
+      }),
+  );
+
   app.get(
     "/style.css",
     () =>
@@ -170,6 +183,28 @@ export function createServer(
         headers: { "content-type": "text/css; charset=utf-8", "cache-control": "no-store" },
       }),
   );
+
+  /**
+   * No other site may drive this server from your browser. Every POST here is
+   * same-origin from these pages; a cross-site one (a form or no-cors fetch on
+   * some page you visit) is refused before it can start, say, a paid news check.
+   */
+  app.use("/api/*", async (c, next) => {
+    if (c.req.method !== "POST") return next();
+    const site = c.req.header("sec-fetch-site");
+    const origin = c.req.header("origin");
+    const host = c.req.header("host");
+    const originHost = (() => {
+      try {
+        return origin ? new URL(origin).host : null;
+      } catch {
+        return "unparseable"; // includes the literal "null" a sandboxed frame sends
+      }
+    })();
+    const crossSite = site === "cross-site" || (originHost != null && host != null && originHost !== host);
+    if (crossSite) return c.json({ error: "Cross-site requests are not allowed." }, 403);
+    return next();
+  });
 
   app.get("/api/state", (c) => c.json(session.getState()));
 
@@ -398,6 +433,66 @@ export function createServer(
     return job ? c.json(job) : c.json({ error: "No such analysis." }, 404);
   });
 
+  /**
+   * The waiver analyzer: overview (roster, holes, alerts, odds, FAAB market) and
+   * the search. Engine work over cached data - no model calls. The paid news
+   * check is a background job: POST starts it (or returns the one in flight),
+   * GET reports on it and never calls the model.
+   */
+  app.get("/api/waivers", async (c) => {
+    if (!waivers) return c.json({ error: "The waiver analyzer is not available in this mode." }, 503);
+    try {
+      return c.json(await waivers.overview({ refresh: c.req.query("refresh") === "1" }));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 502);
+    }
+  });
+
+  const waiverRequest = (body: Record<string, unknown>): WaiverRequest => {
+    const ids = (v: unknown) =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, 16) : [];
+    const one = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : null);
+    const horizon =
+      typeof body.horizon === "string" && ["auto", "week", "season", "playoffs"].includes(body.horizon)
+        ? (body.horizon as Horizon)
+        : undefined;
+    const positions = ids(body.positions).filter((p) => ["QB", "RB", "WR", "TE", "K", "DEF"].includes(p));
+    return { horizon, positions, keep: ids(body.keep), add: one(body.add), drop: one(body.drop) };
+  };
+
+  /** A JSON object, or an empty request - never null, an array, or a number. */
+  const objectBody = async (c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown>> => {
+    const raw = await c.req.json().catch(() => null);
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  };
+
+  app.post("/api/waivers/analyze", async (c) => {
+    if (!waivers) return c.json({ error: "The waiver analyzer is not available in this mode." }, 503);
+    const body = await objectBody(c);
+    try {
+      return c.json(await waivers.analyze(waiverRequest(body)));
+    } catch (err) {
+      const status = err instanceof WaiverQueryError ? 400 : 502;
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, status);
+    }
+  });
+
+  app.post("/api/waivers/news", async (c) => {
+    if (!waivers) return c.json({ error: "The waiver analyzer is not available in this mode." }, 503);
+    const body = await objectBody(c);
+    try {
+      return c.json(await waivers.startNews(waiverRequest(body)));
+    } catch (err) {
+      const status = err instanceof WaiverQueryError ? 400 : 503;
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, status);
+    }
+  });
+
+  app.get("/api/waivers/news", (c) => {
+    if (!waivers) return c.json({ error: "The waiver analyzer is not available in this mode." }, 503);
+    return c.json(waivers.newsStatus());
+  });
+
   app.post("/api/ask", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { question?: unknown };
     const question = typeof body.question === "string" ? body.question : "";
@@ -414,9 +509,13 @@ export function createServer(
   return app;
 }
 
-export function serve(session: DraftSession, trades: TradeProvider | null = null) {
+export function serve(
+  session: DraftSession,
+  trades: TradeProvider | null = null,
+  waivers: WaiverProvider | null = null,
+) {
   const registry = new SubscriberRegistry();
-  const app = createServer(session, registry, trades);
+  const app = createServer(session, registry, trades, waivers);
   const server = Bun.serve({
     port: config.port,
     fetch: app.fetch,

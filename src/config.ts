@@ -149,6 +149,46 @@ export const config = {
     },
   },
 
+  /**
+   * The waiver analyzer (src/waiver/). Gains are in weighted projected points per
+   * week of the window - see src/waiver/odds.ts for where the weights come from.
+   */
+  waiver: {
+    /** A move must improve your weighted lineup by at least this much to be listed. */
+    minGainPerWeek: 0.3,
+    resultLimit: 20,
+    /** Open-ended searches show at most this many adds at one position. */
+    perPositionLimit: 6,
+    /** Moves in the "do these this week" plan. */
+    maxPlanMoves: 3,
+    /** Weekly score noise around a team's projection, for the season simulation. */
+    weeklySd: 22,
+    sims: 6000,
+    /**
+     * Title-equity value of a regular-season win beyond what it does for your
+     * playoff odds - consolation seeding, pride, side pots. It is what keeps an
+     * eliminated team's week weights pointing at the next game instead of all zero.
+     */
+    winValue: 0.005,
+    /**
+     * FAAB: a pickup worth this many weighted points over your next-best option
+     * is worth your whole remaining budget (half that when playoff odds are slim
+     * - money is worth less then). Scales the cap on a suggested bid.
+     */
+    wholeBudgetPoints: 40,
+    /** A move whose value sits this much in one week is a stream for that week, not a hold. */
+    streamShare: 0.7,
+    /**
+     * Leading weeks valued with no waiver floor under starters - this week and
+     * next, where the decisions are. Later weeks assume you can stream then.
+     */
+    noFloorWeeks: 2,
+    /** Paid news check: how many free agents and drops to cover. */
+    newsCandidates: 12,
+    /** Opus with web search, opt-in per run. */
+    newsModel: "claude-opus-5-5",
+  },
+
   paths: {
     dataDir: "data",
     players: "data/players.json",
@@ -158,6 +198,12 @@ export const config = {
     schedule: "data/schedule.json",
     /** Rest-of-season weekly projections for the trade analyzer. */
     ros: "data/ros.json",
+    /** The last few weeks' stat lines: usage context for the waiver analyzer. */
+    stats: "data/stats.json",
+    /** Full NFL schedule by team, for matchup strips. */
+    teamSchedule: "data/team-schedule.json",
+    /** Paid waiver news checks, cached per player per Eastern day. */
+    waiverNews: "data/waiver-news.json",
     capabilities: "data/capabilities.json",
     /** Locally remembered mock drafts - Sleeper has no endpoint that lists them. */
     mocks: "data/mocks.json",

@@ -13,10 +13,12 @@ import type {
   DraftPick,
   League,
   LeagueUser,
+  Matchup,
   NflState,
   PlayersIndex,
   Roster,
   TradedPick,
+  Transaction,
   TrendingPlayer,
 } from "./types.ts";
 
@@ -140,6 +142,14 @@ export const getTradedPicks = (draftId: string) =>
   getJson<TradedPick[]>(api(`/draft/${draftId}/traded_picks`));
 
 export const getNflState = () => getJson<NflState>(api(`/state/nfl`));
+
+/** Every claim, add, drop and trade in one week of the league ("leg"). */
+export const getTransactions = (leagueId: string, week: number) =>
+  getJson<Transaction[]>(api(`/league/${leagueId}/transactions/${week}`));
+
+/** Who plays whom in one fantasy week - future weeks included. */
+export const getMatchups = (leagueId: string, week: number) =>
+  getJson<Matchup[]>(api(`/league/${leagueId}/matchups/${week}`));
 
 export const getTrending = (type: "add" | "drop", lookbackHours = 24, limit = 50) =>
   getJson<TrendingPlayer[]>(

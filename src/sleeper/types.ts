@@ -101,6 +101,19 @@ export interface LeagueSettings extends Record<string, number | undefined> {
   /** 0 = redraft, 1 = keeper, 2 = dynasty (verify against your league). */
   type?: number;
   best_ball?: number;
+  /** 2 = FAAB (verified live 2026-10-21); 0/1 are priority-based. */
+  waiver_type?: number;
+  /** FAAB dollars each team starts the season with. */
+  waiver_budget?: number;
+  /** Days a dropped player sits on waivers before he is a free agent. */
+  waiver_clear_days?: number;
+  /** Which IR designations a reserve slot accepts, beyond IR itself (1 = allowed). */
+  reserve_allow_out?: number;
+  reserve_allow_doubtful?: number;
+  reserve_allow_sus?: number;
+  reserve_allow_cov?: number;
+  reserve_allow_dnr?: number;
+  reserve_allow_na?: number;
 }
 
 /** GET /v1/league/{league_id}/rosters */
@@ -213,6 +226,40 @@ export interface NflState {
   display_week?: number;
   season_start_date?: string;
   previous_season?: string;
+}
+
+/**
+ * GET /v1/league/{league_id}/transactions/{week}. One row per claim, add, drop or
+ * trade. Failed waiver claims are listed too, with the reason in metadata.notes.
+ */
+export interface Transaction {
+  transaction_id?: string;
+  type: "waiver" | "free_agent" | "trade" | "commissioner" | string;
+  status: "complete" | "failed" | string;
+  roster_ids?: number[] | null;
+  /** player_id -> roster_id */
+  adds?: Record<PlayerId, number> | null;
+  drops?: Record<PlayerId, number> | null;
+  /** waiver_bid is the FAAB amount on a waiver claim. */
+  settings?: { waiver_bid?: number; seq?: number } | null;
+  metadata?: { notes?: string } | null;
+  /** epoch ms */
+  created?: number | null;
+  status_updated?: number | null;
+  leg?: number | null;
+}
+
+/**
+ * GET /v1/league/{league_id}/matchups/{week}. Future weeks are populated too
+ * (verified live 2026-10-21): the whole fantasy schedule is known up front.
+ */
+export interface Matchup {
+  roster_id: number;
+  /** Rosters sharing a matchup_id play each other that week. Null on a bye. */
+  matchup_id: number | null;
+  points?: number | null;
+  starters?: PlayerId[] | null;
+  players?: PlayerId[] | null;
 }
 
 /** GET /v1/players/nfl/trending/{add|drop} */

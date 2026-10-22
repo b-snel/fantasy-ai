@@ -49,6 +49,7 @@ doctor is what turns those assumptions into facts on the machine that matters.
 | `bun run sync` | Cache players, league, projections, ADP, bye weeks |
 | `bun run news` | One-time pre-draft news sweep over the top ~150 players |
 | `bun run trades` | In-season trade analyzer in the terminal (the web page is `/trades`) |
+| `bun run waivers` | In-season waiver analyzer in the terminal (the web page is `/waivers`) |
 | `bun start` | The live draft server at `localhost:5173` |
 | `bun run demo` | The real UI against fixture data — no Sleeper, no API key |
 | `bun run mock` | Simulate a full 15-round draft in the terminal |
@@ -116,6 +117,16 @@ roughly $0.30-0.60 and one to two minutes a run, logged in the same spend ledger
 as everything else. A finished analysis of the same trade on unchanged rosters is
 reused for 30 minutes. `bun run demo` drives the same panel with a canned
 reviewer, no key needed.
+
+### The waiver analyzer
+
+`localhost:5173/waivers` (or `bun run waivers`) says who to pick up and who to
+drop, as an ordered plan: lineup fixes, adds to make now, claims with a drop and a
+FAAB bid, and one-week streams that can wait for the next run. Byes, kickoff locks
+and your remaining schedule are in the numbers, each week is weighted by how much
+it moves your season, and bids come from this league's own claim history. No model
+calls - except the optional news check (`--news`, or the button on the page), which
+searches recent news on the shortlist and is the only part that costs money.
 
 ## How it decides
 

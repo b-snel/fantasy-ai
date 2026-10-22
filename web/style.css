@@ -687,3 +687,226 @@ main {
   white-space: pre-wrap;
   color: var(--muted);
 }
+
+/* --- waiver wire --- */
+
+/*
+ * The waiver page reuses the trade analyzer's layout, controls, cards and side
+ * panels; what is here is only what the wire adds: the plan, the hole/stream
+ * lists, the schedule strip, the bid box and the news annotations.
+ */
+
+.waivers-main .pos-val { color: var(--good); }
+.waivers-main .neg-val { color: var(--bad); }
+.warnval { color: var(--warn); }
+
+.analysis { transition: opacity 0.2s; }
+.analysis.stale { opacity: 0.45; }
+
+.wsec { margin-bottom: 18px; }
+.sec-h {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#proposal { scroll-margin-top: 70px; }
+
+/* news */
+.newsrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+#newswrap { display: inline-block; }
+.newsout { margin-bottom: 14px; border-color: rgba(75, 163, 255, 0.35); }
+.newssum { margin: 0 0 6px; font-size: 14px; white-space: pre-wrap; }
+.newsout details { margin: 4px 0; }
+.newsout summary { cursor: pointer; }
+.newsnotes { margin: 6px 0 0; padding-left: 0; list-style: none; font-size: 13px; color: var(--muted); }
+.newsnotes li { margin: 3px 0; }
+.newsnotes b { color: var(--text); font-weight: 600; }
+.outlook { display: inline-block; min-width: 1em; font-size: 11px; text-align: center; }
+.outlook.o-up { color: var(--good); }
+.outlook.o-down { color: var(--bad); }
+.outlook.o-steady, .outlook.o-unknown { color: var(--muted); }
+
+/* the plan */
+.plan { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.step {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.step-n {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.step-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.step-head { display: flex; align-items: baseline; gap: 8px; }
+.step-text { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.stepk { flex-shrink: 0; }
+.badge.k-lineup { background: rgba(255, 92, 92, 0.15); color: var(--bad); }
+.badge.k-warn   { background: rgba(255, 92, 92, 0.15); color: var(--bad); }
+.badge.k-ir     { background: rgba(139, 150, 165, 0.18); color: var(--text); }
+.badge.k-add    { background: rgba(61, 220, 132, 0.14); color: var(--good); }
+.badge.k-claim  { background: rgba(255, 176, 32, 0.14); color: var(--warn); }
+.badge.k-later  { background: rgba(75, 163, 255, 0.15); color: var(--accent); }
+.step-lineup, .step-ir-healthy { border-color: rgba(255, 92, 92, 0.35); }
+.step-add { border-color: rgba(61, 220, 132, 0.35); }
+.step-claim { border-color: rgba(255, 176, 32, 0.35); }
+
+.mvline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13.5px; }
+.mvarrow { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.pchip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
+.pchip b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pchip .badge { font-size: 9.5px; padding: 1px 4px; }
+.pchip .mini { width: 22px; height: 22px; }
+
+.avail { font-size: 12px; font-weight: 500; }
+.avail.av-free_agent { color: var(--good); }
+.avail.av-waivers { color: var(--warn); }
+.avail.av-locked { color: var(--muted); }
+
+.alts { font-size: 13px; }
+.alts .why-h { display: inline-block; }
+.alts ul { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.alts li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+
+/* holes and streams */
+.streams { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 10px; }
+.sweek { min-width: 0; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.sweek-h { font-weight: 700; margin-bottom: 4px; }
+.sweek-ok { margin: 0 0 4px; }
+.holes { margin: 0 0 6px; padding-left: 18px; color: var(--warn); font-size: 13px; }
+.srows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.srow { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; font-size: 13px; padding: 3px 0; border-top: 1px solid var(--line); }
+.srow:first-child { border-top: 0; }
+.srow .badge { font-size: 9.5px; padding: 1px 4px; }
+.sname { font-weight: 600; min-width: 0; flex: 1 1 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sgain { font-weight: 700; font-variant-numeric: tabular-nums; }
+.spts { font-variant-numeric: tabular-nums; }
+.srep { font-size: 12px; }
+.srow .avail { flex-basis: 100%; padding-left: 33px; font-size: 11.5px; }
+.srow .tog { margin-left: auto; }
+
+/* move cards */
+.card.wmove.proposal { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(75, 163, 255, 0.25); }
+.badge.k-stream { background: rgba(75, 163, 255, 0.15); color: var(--accent); }
+.badge.wait     { background: rgba(139, 150, 165, 0.18); color: var(--text); }
+.badge.v-do       { background: rgba(61, 220, 132, 0.14); color: var(--good); }
+.badge.v-consider { background: rgba(255, 176, 32, 0.14); color: var(--warn); }
+.badge.v-skip     { background: rgba(255, 92, 92, 0.15); color: var(--bad); }
+.badge.lockb      { background: rgba(139, 150, 165, 0.18); color: var(--muted); }
+
+.wsched { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-width: 0; }
+.wsched .why-h { flex-shrink: 0; margin: 0; }
+.wstrip { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; flex: 1; }
+.wcell {
+  flex: 1 0 30px;
+  max-width: 46px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 0;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  font-size: 10.5px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+.wcell-wk { color: var(--muted); font-size: 9.5px; }
+.wcell-opp { font-weight: 600; white-space: nowrap; }
+.wcell.t-good { background: rgba(61, 220, 132, 0.16); color: var(--good); }
+.wcell.t-bad  { background: rgba(255, 92, 92, 0.14); color: var(--bad); }
+.wcell.t-bye  { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+.wcell.t-out  { background: rgba(255, 92, 92, 0.06); color: var(--muted); text-decoration: line-through; }
+.wcell.peak   { border-color: var(--accent); }
+
+.availline { margin-top: 8px; }
+.wreasons { margin: 6px 0 0; }
+.wctx { margin: 4px 0 0; }
+.wctx .tip { border-bottom-color: var(--line); }
+
+.bidbox {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 176, 32, 0.06);
+  border: 1px solid rgba(255, 176, 32, 0.3);
+  border-radius: 8px;
+}
+.bidbox.outbid { border-color: rgba(255, 92, 92, 0.4); }
+.bid-amt { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.bid-n { font-size: 28px; font-weight: 800; color: var(--warn); font-variant-numeric: tabular-nums; line-height: 1; }
+.bid-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.35; }
+.bid-label .muted { font-weight: 500; letter-spacing: normal; text-transform: none; }
+.bid-why { min-width: 0; }
+.bid-lines { margin: 0; padding-left: 16px; font-size: 13px; color: var(--muted); }
+.bid-stats { margin: 4px 0 0; }
+
+.wnews { margin: 8px 0 0; font-size: 13.5px; }
+.wnews b { font-weight: 600; }
+.wverdict { margin: 6px 0 0; font-size: 13.5px; padding: 6px 9px; border-radius: 7px; background: var(--panel-2); }
+.wverdict.v-do b { color: var(--good); }
+.wverdict.v-consider b { color: var(--warn); }
+.wverdict.v-skip b { color: var(--bad); }
+
+.dropopts { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.dropopts ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.dropopts li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 2px 4px; border-radius: 6px; }
+.dropopts li.on { background: rgba(61, 220, 132, 0.07); }
+.dropopts li > span:nth-child(2) { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* side panels */
+.wroster .rcut { width: 30px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.wroster .rcut.free { color: var(--good); }
+.wroster li.rhead .rcut { font-size: 11px; }
+.wroster li.ir .rname { color: var(--muted); font-style: italic; }
+.wroster .racts { min-width: 78px; }
+.wroster .outlook { font-size: 10px; }
+/* The name gives way before the badges do. */
+.wroster .rname { display: flex; align-items: center; gap: 4px; }
+.wroster .rnm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wroster .rname .badge, .wroster .rname .outlook { flex-shrink: 0; }
+
+.levchart svg { display: block; max-width: 100%; height: auto; }
+.levchart rect { fill: var(--accent); opacity: 0.7; }
+.levchart rect.po { fill: var(--top); opacity: 0.85; }
+.levchart line.avg { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.levchart text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+#levnote { margin-top: 6px; }
+
+.wleague .wholes { max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--warn); font-size: 11.5px; }
+.wleague tr.me td { background: rgba(75, 163, 255, 0.08); }
+.wleague td.rk { border-radius: 0; }
+
+.mkt-line { margin: 0 0 8px; }
+.mkt-line b { font-variant-numeric: tabular-nums; }
+.leaguetable.mkt { margin-bottom: 8px; }
+.leaguetable.mkt td:first-child { text-align: left; }
+.waivers-main .explain + .explain { margin-top: 8px; }
+
+@media (max-width: 640px) {
+  /* Hidden tooltips still count as overflow; anchor the score row's to the left and clip the rest. */
+  .waivers-main { overflow-x: clip; }
+  .waivers-main .tscore .tip::after { left: -8px; right: auto; transform: none; width: 200px; }
+  .wroster .spark, .wroster .spark-h { display: none; }
+  .bidbox { flex-direction: column; gap: 8px; }
+  .wsched { flex-direction: column; align-items: stretch; gap: 4px; }
+  .step { padding: 9px 10px; }
+  .step-head { flex-direction: column; gap: 4px; }
+}
