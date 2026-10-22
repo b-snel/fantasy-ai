@@ -14,7 +14,8 @@
     "typecheck": "bunx tsc --noEmit",
     "demo": "bun run src/cli/demo.ts",
     "news": "bun run src/cli/news.ts",
-    "trades": "bun run src/cli/trades.ts"
+    "trades": "bun run src/cli/trades.ts",
+    "waivers": "bun run src/cli/waivers.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

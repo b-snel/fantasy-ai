@@ -13,11 +13,14 @@ import type { Capabilities } from "./capabilities.ts";
 
 export type ByeWeeks = Record<string, number>;
 
-interface ScheduleGame {
+export interface ScheduleGame {
   week?: number;
   home?: string;
   away?: string;
+  /** "pre_game" | "in_game" | "complete" (verified live 2026-10-21). */
   status?: string;
+  /** YYYY-MM-DD, Eastern. No kickoff time is published. */
+  date?: string;
 }
 
 /**
@@ -52,6 +55,64 @@ export async function getByeWeeks(opts: {
     console.warn(`[schedule] bye-week lookup failed: ${err instanceof Error ? err.message : err}`);
     return {};
   }
+}
+
+export interface TeamGame {
+  opponent: string;
+  home: boolean;
+  /** YYYY-MM-DD; null when Sleeper has not dated it. */
+  date: string | null;
+  status: string | null;
+}
+
+/** team -> week -> its game. Absent weeks are byes. */
+export type TeamSchedule = Record<string, Record<number, TeamGame>>;
+
+/** Bump when the cached shape changes, so an old file is a miss rather than half-read. */
+const TEAM_SCHEDULE_VERSION = 1;
+/** Game status flips to in_game/complete during the week; keep this short. */
+const TEAM_SCHEDULE_MAX_AGE_MS = 30 * 60 * 1000;
+
+/**
+ * The full regular-season schedule by team - for the waiver analyzer's matchup
+ * strip and for knowing whose game has kicked off. Same endpoint as the byes;
+ * cached separately (and briefly - statuses change on game day) so the bye
+ * cache the draft reads is never touched.
+ */
+export async function getTeamSchedule(opts: { season: string; force?: boolean }): Promise<TeamSchedule> {
+  const { season, force = false } = opts;
+  const key = `v${TEAM_SCHEDULE_VERSION}:${season}`;
+  if (!force) {
+    const cached = await readCache<{ key: string; teams: TeamSchedule }>(
+      config.paths.teamSchedule,
+      TEAM_SCHEDULE_MAX_AGE_MS,
+    );
+    if (cached?.key === key && Object.keys(cached.teams).length) return cached.teams;
+  }
+  try {
+    const games = await getJson<ScheduleGame[]>(`${config.sleeper.dataBase}/schedule/nfl/regular/${season}`, {
+      retries: 1,
+    });
+    if (!games?.length) return {};
+    const teams = teamSchedule(games);
+    await writeCache(config.paths.teamSchedule, { key, teams });
+    return teams;
+  } catch (err) {
+    console.warn(`[schedule] schedule lookup failed: ${err instanceof Error ? err.message : err}`);
+    return {};
+  }
+}
+
+/** Exported for testing. */
+export function teamSchedule(games: ScheduleGame[]): TeamSchedule {
+  const out: TeamSchedule = {};
+  for (const g of games) {
+    if (g.week == null || !g.home || !g.away) continue;
+    const common = { date: g.date ?? null, status: g.status ?? null };
+    (out[g.home] ??= {})[g.week] = { opponent: g.away, home: true, ...common };
+    (out[g.away] ??= {})[g.week] = { opponent: g.home, home: false, ...common };
+  }
+  return out;
 }
 
 /** Exported for testing: the week each team is absent from the schedule. */
