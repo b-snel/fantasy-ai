@@ -779,3 +779,87 @@ describe("a refresh with failed fetches keeps the last good data", () => {
     expect(mergeActivity(good, fresh)).toBe(fresh);
   });
 });
+
+describe("the news call when the search budget runs out mid-check", () => {
+  // The live failure of 2026-10-22: the model searched from code, the budget
+  // ran out after one player, and the limit showed up only in the code run's
+  // stderr. What was searched is kept; the rest is asked again next time.
+  const paths = config.paths as { waiverNews: string };
+  const saved = paths.waiverNews;
+  const realFetch = globalThis.fetch;
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  let dir = "";
+
+  const req: NewsRequest = {
+    today: "2026-10-22",
+    leagueLine: "THE MAIN LEAGUE, 12 teams, half PPR, FAAB.",
+    teamLine: "My team is 0-6.",
+    candidates: [
+      { playerId: "1373", name: "Geno Smith", position: "QB", team: "NYJ", role: "add", context: "15 pts/wk" },
+      { playerId: "PHI", name: "Philadelphia Eagles", position: "DEF", team: "PHI", role: "add", context: "8 pts/wk" },
+    ],
+    moves: [
+      { add: "1373", drop: null, summary: "+2.3 pts/wk weighted, a week 8 stream" },
+      { add: "PHI", drop: null, summary: "+1.8 pts/wk weighted, a hold" },
+    ],
+  };
+  const answer = {
+    players: [
+      { id: "1373", note: "Named the starter again Wednesday.", outlook: "up" },
+      { id: "PHI", note: "Couldn't check - the search limit ran out.", outlook: "unknown" },
+    ],
+    moves: [
+      { add_id: "1373", verdict: "do", reason: "He keeps the job." },
+      { add_id: "PHI", verdict: "consider", reason: "No news found." },
+    ],
+    summary: "Stream Geno.",
+  };
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "waiver-news-budget-"));
+    paths.waiverNews = join(dir, "waiver-news.json");
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          id: "msg_budget",
+          type: "message",
+          role: "assistant",
+          model: "claude-opus-5-5",
+          content: [
+            { type: "server_tool_use", id: "srv_1", name: "code_execution", input: { code: "..." } },
+            { type: "server_tool_use", id: "srv_2", name: "web_search", input: { query: "Geno Smith Jets injury news" } },
+            { type: "web_search_tool_result", tool_use_id: "srv_2", content: [{ type: "web_search_result", url: "https://example.com", title: "x", encrypted_content: "x", page_age: null }] },
+            {
+              type: "code_execution_tool_result",
+              tool_use_id: "srv_1",
+              content: { type: "encrypted_code_execution_result", encrypted_stdout: "x", stderr: "Server tool use limit exceeded", return_code: 1 },
+            },
+            { type: "text", text: JSON.stringify(answer) },
+          ],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 1000, output_tokens: 500, server_tool_use: { web_search_requests: 8 } },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+    paths.waiverNews = saved;
+    if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedKey;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("keeps the searched player, leaves the unsearched one for next time, and says so", async () => {
+    const out = await liveNewsProvider().check(req);
+    expect(out.unchecked).toEqual(["Philadelphia Eagles"]);
+    expect(out.items.map((i) => i.playerId)).toEqual(["1373"]);
+    expect(out.verdicts.map((v) => v.add)).toEqual(["1373"]);
+    const cached = await liveNewsProvider().cached(req.today);
+    expect(cached.items.map((i) => i.playerId)).toEqual(["1373"]);
+    expect(cached.verdicts.map((v) => v.add)).toEqual(["1373"]);
+  });
+});

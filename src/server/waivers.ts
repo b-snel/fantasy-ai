@@ -292,6 +292,8 @@ export interface NewsJobView {
   costUsd: number;
   searches: number;
   cachedPlayers: number;
+  /** Players the last check ran out of searches before reaching; the next check asks only about them. */
+  unchecked: string[];
   summary: string | null;
   items: Array<{ playerId: string; name: string; note: string; outlook: NewsItem["outlook"] }>;
   verdicts: Array<{ add: string; name: string; verdict: MoveVerdict["verdict"]; reason: string }>;
@@ -613,6 +615,10 @@ export class WaiverService implements WaiverProvider {
           costUsd: out.costUsd,
           searches: out.searches,
           cachedPlayers: out.cachedPlayers,
+          unchecked: out.unchecked,
+          summary: out.unchecked.length
+            ? `${out.summary ?? ""} Not checked yet (the search budget ran out): ${out.unchecked.join(", ")} - run the check again to finish; it only asks about them.`.trim()
+            : this.newsSummary,
         };
       } catch (err) {
         this.news = {
@@ -1192,6 +1198,7 @@ function emptyJob(): NewsJobView {
     costUsd: 0,
     searches: 0,
     cachedPlayers: 0,
+    unchecked: [],
     summary: null,
     items: [],
     verdicts: [],

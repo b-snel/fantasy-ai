@@ -185,6 +185,13 @@ export const config = {
     noFloorWeeks: 2,
     /** Paid news check: how many free agents and drops to cover. */
     newsCandidates: 12,
+    /**
+     * Web-search budget for one news check. The search tool runs its queries
+     * from code the model writes, and every one counts - at 8 the model spent
+     * the lot on its first two steps and checked one player (live 2026-10-22).
+     * $0.01 each.
+     */
+    newsMaxSearches: 30,
     /** Opus with web search, opt-in per run. */
     newsModel: "claude-opus-5-5",
   },

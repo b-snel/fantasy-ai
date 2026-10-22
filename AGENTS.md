@@ -361,8 +361,17 @@ First live run (2026-10-21, $0.28, 50s, 8 searches billed): search failed after
 one query and the model filled the notes with "couldn't check" - which got cached
 as news. Server-tool errors arrive as HTTP 200 with an error object in the tool
 result, so `news.ts` now counts them and, when failed searches outnumber
-successful ones, throws with the error codes and caches nothing. Why search
-failed that time is not known; the next failure will say.
+successful ones, throws with the error codes and caches nothing. The cause was
+found the next day (2026-10-22, from a raw response): `web_search_20260209` runs
+its queries from code the model writes, every query counts against `max_uses`,
+and at 8 the model spent the whole budget in its first two code steps (repeats
+and test queries included) and checked one player. The limit shows up only as
+`stderr: "Server tool use limit exceeded"` in the code run's result. Now: a
+budget of `config.waiver.newsMaxSearches` (30), a prompt that says one query per
+player and no repeats, detection of the stderr form, and only players some query
+actually named are cached - the rest are listed as unchecked and asked again on
+the next check. First working run: $0.72, 70s, and it caught a stale projection
+(a "dead weight" drop who had become his team's lead back).
 
 **How to work on it safely.** Same lesson: run `bun run waivers` against the live
 league and read the plan - the floor problem above was found on live output, and

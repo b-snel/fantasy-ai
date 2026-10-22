@@ -82,6 +82,8 @@ export interface NewsResult {
   model: string | null;
   /** Players and moves served from today's cache rather than the call. */
   cachedPlayers: number;
+  /** Players the call ran out of searches before it reached - not cached, asked again next time. */
+  unchecked: string[];
 }
 
 /** What the service needs; tests and the demo pass a fake so nothing bills. */
@@ -159,6 +161,7 @@ export function liveNewsProvider(): NewsProvider {
         searches: 0,
         model: null,
         cachedPlayers: req.candidates.length - needNotes.length,
+        unchecked: [],
         ...extra,
       });
       if (!needNotes.length && !needVerdicts.length) return merged();
@@ -177,13 +180,24 @@ export function liveNewsProvider(): NewsProvider {
       const out = await callModel({ ...req, candidates: [...ask.values()], moves: needVerdicts.length ? needVerdicts : req.moves });
 
       const now = Date.now();
-      for (const it of out.items) cache.items[it.playerId] = { ...it, checkedAt: now };
-      // A player asked about with nothing to report is cached as checked, so he is not re-asked today.
-      for (const c of ask.values()) cache.items[c.playerId] ??= { playerId: c.playerId, note: "", outlook: "unknown", checkedAt: now };
-      for (const v of out.verdicts) cache.verdicts[v.add] = { ...v, checkedAt: now };
-      cache.summary = out.summary || cache.summary;
+      // Only what was actually searched is cached: a player the call never got
+      // to is asked again next time instead of showing "couldn't check" all day.
+      const checked = (id: string) => !out.unchecked.includes(id);
+      for (const it of out.items) if (checked(it.playerId)) cache.items[it.playerId] = { ...it, checkedAt: now };
+      // A player searched with nothing to report is cached as checked, so he is not re-asked today.
+      for (const c of ask.values()) {
+        if (checked(c.playerId)) cache.items[c.playerId] ??= { playerId: c.playerId, note: "", outlook: "unknown", checkedAt: now };
+      }
+      for (const v of out.verdicts) if (checked(v.add)) cache.verdicts[v.add] = { ...v, checkedAt: now };
+      if (!out.unchecked.length) cache.summary = out.summary || cache.summary;
       await writeCache(config.paths.waiverNews, cache);
-      return merged({ costUsd: out.costUsd, searches: out.searches, model: out.model, cachedPlayers: req.candidates.length - ask.size });
+      const result = merged({ costUsd: out.costUsd, searches: out.searches, model: out.model, cachedPlayers: req.candidates.length - ask.size });
+      const name = (id: string) => req.candidates.find((c) => c.playerId === id)?.name ?? id;
+      return {
+        ...result,
+        summary: out.unchecked.length ? out.summary : result.summary,
+        unchecked: out.unchecked.map(name),
+      };
     },
   };
 }
@@ -195,6 +209,8 @@ async function callModel(req: NewsRequest): Promise<{
   costUsd: number;
   searches: number;
   model: string;
+  /** Candidate ids no search query named before the budget ran out. */
+  unchecked: string[];
 }> {
   // No SDK retries: a failure should surface now, not after an invisible sleep
   // (AGENTS.md #8). The route runs this as a background job, so the timeout is
@@ -213,6 +229,9 @@ async function callModel(req: NewsRequest): Promise<{
     `My waiver engine has shortlisted these moves from rest-of-season weekly projections (Rotowire, ` +
     `refreshed weekly - so they can lag news from the last day or two):\n${moves}\n\n` +
     `Players to check:\n${table}\n\n` +
+    `You have ${config.waiver.newsMaxSearches} web searches in total and every query counts, including ones ` +
+    `run from code. Spend them one per player: a single query naming him and his team (e.g. "Geno ` +
+    `Smith Jets injury news"), adds first, no repeats and no test queries.\n\n` +
     `Search for recent news on these players - injuries and practice reports, depth-chart and role ` +
     `changes, suspensions, trades, coach comments - prioritising the adds and the last few days. Then ` +
     `give each move a verdict: "do" if the news supports it or changes nothing, "consider" if it is a ` +
@@ -224,10 +243,12 @@ async function callModel(req: NewsRequest): Promise<{
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt }];
   const started = performance.now();
   let searches = 0;
-  // Server-tool failures come back as HTTP 200 with an error object in the tool
-  // result, not as an exception - count them, or a check whose searches all
-  // failed gets cached as "no news" (seen live 2026-10-21).
+  // Server-tool failures come back as HTTP 200, not as exceptions: an error
+  // object in a search result, or - when the model searches from code, as the
+  // 20260209 tool does - "Server tool use limit exceeded" in the code run's
+  // stderr (seen live 2026-10-22). Count both, and note what was searched for.
   const toolErrors: string[] = [];
+  const queries: string[] = [];
   let searchResults = 0;
   let usage: CallUsage | null = null;
   let parsed: z.infer<typeof NewsSchema> | null = null;
@@ -242,17 +263,24 @@ async function callModel(req: NewsRequest): Promise<{
         fallbacks: "default",
         thinking: { type: "adaptive" },
         output_config: { effort: "medium", format: betaZodOutputFormat(NewsSchema) },
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: config.waiver.newsMaxSearches }],
         messages,
       });
       searches += response.usage.server_tool_use?.web_search_requests ?? 0;
-      for (const block of response.content as unknown as Array<{ type?: unknown; content?: unknown }>) {
+      for (const block of response.content as unknown as Array<{ type?: unknown; name?: unknown; input?: unknown; content?: unknown }>) {
+        if (block.type === "server_tool_use" && block.name === "web_search") {
+          const q = (block.input as { query?: unknown } | undefined)?.query;
+          if (typeof q === "string") queries.push(q);
+        }
         if (typeof block.type !== "string" || !block.type.endsWith("_tool_result")) continue;
-        const c = block.content as { error_code?: unknown } | unknown[] | undefined;
+        const kind = block.type.replace(/_tool_result$/, "");
+        const c = block.content as { error_code?: unknown; stderr?: unknown } | unknown[] | undefined;
         if (Array.isArray(c)) {
           if (block.type === "web_search_tool_result") searchResults++;
         } else if (c && typeof c.error_code === "string") {
-          toolErrors.push(`${block.type.replace(/_tool_result$/, "")} ${c.error_code}`);
+          toolErrors.push(`${kind} ${c.error_code}`);
+        } else if (c && typeof c.stderr === "string" && /limit exceeded/i.test(c.stderr)) {
+          toolErrors.push(`${kind} search limit exceeded`);
         }
       }
       const u = summariseUsage(response.model ?? model, response.usage, Math.round(performance.now() - started));
@@ -271,16 +299,22 @@ async function callModel(req: NewsRequest): Promise<{
     if (usage) recordUsage({ ...usage, estimatedCostUsd: round4(usage.estimatedCostUsd + searches * WEB_SEARCH_USD) });
   }
   if (!parsed) throw new Error("The news check returned no usable answer.");
-  if (toolErrors.length && searchResults <= toolErrors.length) {
+  if (toolErrors.length && searchResults === 0) {
     // Mostly failed searches: what the model wrote is an apology, not news. Do
     // not cache it - the next check should try again.
     const counts = new Map<string, number>();
     for (const e of toolErrors) counts.set(e, (counts.get(e) ?? 0) + 1);
     const detail = [...counts].map(([e, n]) => `${e}${n > 1 ? ` x${n}` : ""}`).join(", ");
-    throw new Error(
-      `Web search failed (${detail}; ${searchResults} search${searchResults === 1 ? "" : "es"} returned results) - nothing was cached, try again later.`,
-    );
+    throw new Error(`Web search failed (${detail}) - nothing was cached, try again later.`);
   }
+  // Some searches worked: keep what they covered, and leave anyone no query
+  // named for the next check. With no errors every candidate counts as checked
+  // (a model may legitimately cover two players in one query).
+  const mentioned = (c: NewsCandidate) => {
+    const last = normalise(c.name.split(" ").filter((w) => !/^(jr|sr|ii|iii|iv)\.?$/i.test(w)).at(-1) ?? c.name);
+    return queries.some((q) => normalise(q).includes(last) || (c.position === "DEF" && normalise(q).includes(normalise(c.name))));
+  };
+  const unchecked = toolErrors.length ? req.candidates.filter((c) => !mentioned(c)).map((c) => c.playerId) : [];
 
   // Ids first, names second: a model that echoes a name where an id belongs
   // should still land on the right player.
@@ -304,6 +338,7 @@ async function callModel(req: NewsRequest): Promise<{
     costUsd: round4((usage?.estimatedCostUsd ?? 0) + searches * WEB_SEARCH_USD),
     searches,
     model: usage?.model ?? model,
+    unchecked,
   };
 }
 
