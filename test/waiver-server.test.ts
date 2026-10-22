@@ -45,6 +45,7 @@ function fakeNews() {
         searches: 3,
         model: "fake",
         cachedPlayers: 0,
+        unchecked: [],
       };
     },
     async cached() {
